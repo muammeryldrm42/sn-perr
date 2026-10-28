@@ -31,3 +31,16 @@ export const loadCandles = createServerFn({ method: "GET" })
     const { buildCandles } = await import("./scan-core");
     return buildCandles(data.mint, data.aggregate);
   });
+
+export const liftPeak = createServerFn({ method: "POST" })
+  .validator((input: unknown) => {
+    const mint = typeof input === "object" && input && "mint" in input ? String((input as { mint: unknown }).mint) : "";
+    const mcap = typeof input === "object" && input && "mcap" in input ? Number((input as { mcap: unknown }).mcap) : 0;
+    if (!MINT.test(mint) || !(mcap > 0) || mcap > 1e12) throw new Error("Invalid peak");
+    return { mint, mcap };
+  })
+  .handler(async ({ data }) => {
+    const { liftSharedPeak } = await import("./archive-db");
+    await liftSharedPeak(data.mint, data.mcap);
+    return { ok: true };
+  });

@@ -225,6 +225,20 @@ async function pairsFor(mints: string[]): Promise<{ pairs: DexPair[]; ok: boolea
   return { pairs, ok };
 }
 
+export async function quotesFor(mints: string[]): Promise<Scored[]> {
+  const unique = [...new Set(mints)].filter((mint) => !IGNORE.has(mint)).slice(0, 60);
+  if (!unique.length) return [];
+  const { pairs } = await pairsFor(unique);
+  const best = pickPairs(pairs);
+  const now = Date.now();
+  return [...best.values()]
+    .map((pair) => {
+      const token = toToken(pair, undefined);
+      return token ? scoreToken(token, now) : null;
+    })
+    .filter((token): token is Scored => token !== null);
+}
+
 function rank(tokens: Scored[]): Scored[] {
   const kept = new Set(
     tokens

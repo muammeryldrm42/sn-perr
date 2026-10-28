@@ -10,14 +10,18 @@ export function TokenChart({
   mcap,
   callMcap,
   calledAt,
+  onHigh,
 }: {
   mint: string;
   priceUsd: number;
   mcap: number;
   callMcap?: number;
   calledAt?: number;
+  onHigh?: (high: number) => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
+  const onHighRef = useRef(onHigh);
+  onHighRef.current = onHigh;
   const [span, setSpan] = useState<1 | 5>(1);
   const [status, setStatus] = useState<"loading" | "empty" | "ready">("loading");
 
@@ -65,6 +69,7 @@ export function TokenChart({
         setStatus("empty");
         return;
       }
+      onHighRef.current?.(Math.max(...bars.map((bar) => bar.high)));
 
       const chart = createChart(host.current, {
         autoSize: true,

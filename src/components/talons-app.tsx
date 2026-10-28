@@ -17,7 +17,7 @@ import type { CallTier, Proof, ScanResult, Scored } from "@/lib/gate";
 import { paperTrade } from "@/lib/gate";
 import { clsxPct, fmtAge, fmtPct, fmtUsd, fmtX, shortMint } from "@/lib/format";
 import { dismissNotice, loadBook, loadSeen, loadWatch, mergeBook, noticeDismissed, saveBook, saveSeen, saveWatch, type CallRec } from "@/lib/book";
-import { scanMarket, searchMarket } from "@/lib/market-fns";
+import { liftPeak, scanMarket, searchMarket } from "@/lib/market-fns";
 import { TokenChart } from "@/components/token-chart";
 
 type View = "calls" | "radar" | "record" | "method" | "watch" | "token";
@@ -228,11 +228,11 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
     }
     setBook((prev) => {
       const base = prev.length ? prev : loadBook();
-      const next = mergeBook(tokens, base, Date.now());
+      const next = mergeBook([...tokens, ...extra], base, Date.now());
       saveBook(next);
       return next;
     });
-  }, [tokens, hydrated, shared, serverBook]);
+  }, [tokens, extra, hydrated, shared, serverBook]);
 
   useEffect(() => {
     if (!hydrated || seenBoot.current) return;
@@ -310,6 +310,16 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
     } finally {
       setSearching(false);
     }
+  }
+
+  function notePeak(nextMint: string, mcap: number) {
+    if (!(mcap > 0)) return;
+    setBook((prev) => {
+      const next = prev.map((row) => (row.mint === nextMint && mcap > row.peakMcap ? { ...row, peakMcap: mcap } : row));
+      if (!shared) saveBook(next);
+      return next;
+    });
+    if (shared) void liftPeak({ data: { mint: nextMint, mcap } });
   }
 
   function openToken(nextMint: string) {
@@ -603,6 +613,7 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
                   setCopied(false);
                 }
               }}
+              onPeak={notePeak}
             />
           )}
         </main>
@@ -1014,6 +1025,7 @@ function TokenView({
   onBack,
   onWatch,
   onCopy,
+  onPeak,
 }: {
   token: Scored | null;
   rec?: CallRec;
@@ -1023,17 +1035,29 @@ function TokenView({
   onBack: () => void;
   onWatch: () => void;
   onCopy: () => void;
+  onPeak: (mint: string, mcap: number) => void;
 }) {
+  const mint = token?.mint ?? rec?.mint ?? "";
+  const [candleHigh, setCandleHigh] = useState(0);
+  const onPeakRef = useRef(onPeak);
+  onPeakRef.current = onPeak;
+  useEffect(() => {
+    setCandleHigh(0);
+  }, [mint]);
+  useEffect(() => {
+    if (candleHigh > 0 && mint) onPeakRef.current(mint, candleHigh);
+  }, [candleHigh, mint]);
   if (!token && !rec) {
     return <Empty title="Token left the scan" body="It is not in the latest pass. Go back and refresh." />;
   }
   const symbol = token?.symbol ?? rec?.symbol ?? "";
   const name = token?.name ?? rec?.name ?? "";
   const image = token?.image ?? rec?.image;
-  const mint = token?.mint ?? rec?.mint ?? "";
   const pairUrl = token?.pairUrl ?? rec?.pairUrl ?? `https://dexscreener.com/solana/${mint}`;
-  const since = rec && rec.callMcap > 0 ? rec.nowMcap / rec.callMcap : null;
-  const peak = rec && rec.callMcap > 0 ? rec.peakMcap / rec.callMcap : null;
+  const liveMcap = token && token.mcap > 0 ? token.mcap : (rec?.nowMcap ?? 0);
+  const since = rec && rec.callMcap > 0 ? liveMcap / rec.callMcap : null;
+  const peakMcap = Math.max(rec?.peakMcap ?? 0, rec?.nowMcap ?? 0, liveMcap, candleHigh);
+  const peak = rec && rec.callMcap > 0 ? peakMcap / rec.callMcap : null;
 
   return (
     <section className="flex flex-col gap-4">
@@ -1079,6 +1103,7 @@ function TokenView({
           mcap={token?.mcap ?? rec?.nowMcap ?? 0}
           callMcap={rec?.callMcap}
           calledAt={rec?.calledAt}
+          onHigh={setCandleHigh}
         />
       </div>
       {token && token.reasons.length > 0 && (
@@ -1153,8 +1178,9 @@ function TokenRow({
   onWatch: (mint: string) => void;
   note?: string;
 }) {
-  const since = rec && rec.callMcap > 0 ? rec.nowMcap / rec.callMcap : null;
-  const peak = rec && rec.callMcap > 0 ? Math.max(rec.peakMcap, rec.nowMcap) / rec.callMcap : null;
+  const liveMcap = token.mcap > 0 ? token.mcap : (rec?.nowMcap ?? 0);
+  const since = rec && rec.callMcap > 0 ? liveMcap / rec.callMcap : null;
+  const peak = rec && rec.callMcap > 0 ? Math.max(rec.peakMcap, rec.nowMcap, liveMcap) / rec.callMcap : null;
   const reason = rec?.reasons[0] ?? token.reasons[0];
   const calledAgo = rec && now ? fmtAge(now - rec.calledAt) : null;
   return (
