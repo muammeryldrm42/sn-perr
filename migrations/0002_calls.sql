@@ -1,0 +1,21 @@
+create table if not exists calls (
+  mint text primary key,
+  symbol text not null,
+  name text not null,
+  image text,
+  dex text not null,
+  pair_url text not null,
+  called_at bigint not null,
+  call_mcap double precision not null,
+  peak_mcap double precision not null,
+  now_mcap double precision not null,
+  path text not null,
+  score integer not null,
+  reasons text not null default '[]',
+  twitter text,
+  website text,
+  telegram text,
+  chg_h1 double precision not null default 0,
+  liq double precision not null default 0,
+  boosts integer not null default 0
+);

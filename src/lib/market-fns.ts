@@ -4,7 +4,10 @@ const MINT = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 export const scanMarket = createServerFn({ method: "GET" }).handler(async () => {
   const { buildScan } = await import("./scan-core");
-  return buildScan();
+  const { syncSharedBook } = await import("./archive-db");
+  const scan = await buildScan();
+  const shared = await syncSharedBook(scan.tokens);
+  return { ...scan, book: shared.book, shared: shared.shared };
 });
 
 export const searchMarket = createServerFn({ method: "GET" })

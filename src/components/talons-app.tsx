@@ -156,7 +156,9 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
   const [searching, setSearching] = useState(false);
   const [tier, setTier] = useState<(typeof TIERS)[number]["id"]>("all");
   const [sort, setSort] = useState<CallSort>("score");
-  const [book, setBook] = useState<CallRec[]>([]);
+  const [book, setBook] = useState<CallRec[]>(initial.shared ? initial.book : []);
+  const [shared, setShared] = useState(initial.shared);
+  const [serverBook, setServerBook] = useState(initial.book);
   const [watch, setWatch] = useState<string[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const [showNotice, setShowNotice] = useState(false);
@@ -180,13 +182,17 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
 
   useEffect(() => {
     if (!hydrated) return;
+    if (shared) {
+      setBook(serverBook);
+      return;
+    }
     setBook((prev) => {
       const base = prev.length ? prev : loadBook();
       const next = mergeBook(tokens, base, Date.now());
       saveBook(next);
       return next;
     });
-  }, [tokens, hydrated]);
+  }, [tokens, hydrated, shared, serverBook]);
 
   useEffect(() => {
     if (!hydrated || seenBoot.current) return;
@@ -241,6 +247,9 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
       setSources(next.sources);
       setError(next.error);
       setScannedAt(next.scannedAt);
+      setShared(next.shared);
+      setServerBook(next.book);
+      if (next.shared) setBook(next.book);
     } catch {
       setError("The scan failed. Retry in a few seconds.");
     } finally {
@@ -487,6 +496,7 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
               watch={watch}
               now={now}
               showNotice={showNotice}
+              shared={shared}
               onDismiss={() => {
                 dismissNotice();
                 setShowNotice(false);
@@ -501,7 +511,7 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
           {view === "radar" && (
             <RadarView tokens={radar.slice(0, 30)} watch={watch} now={now} onOpen={openToken} onWatch={toggleWatch} />
           )}
-          {view === "record" && <RecordView book={book} now={now} onOpen={openToken} />}
+          {view === "record" && <RecordView book={book} now={now} shared={shared} onOpen={openToken} />}
           {view === "method" && <MethodView sources={sources} />}
           {view === "watch" && (
             <WatchView tokens={watched} missing={watch.length - watched.length} bookByMint={bookByMint} watch={watch} now={now} onOpen={openToken} onWatch={toggleWatch} />
@@ -587,6 +597,7 @@ function CallsView({
   watch,
   now,
   showNotice,
+  shared,
   onDismiss,
   onOpen,
   onWatch,
@@ -607,6 +618,7 @@ function CallsView({
   watch: string[];
   now: number | null;
   showNotice: boolean;
+  shared: boolean;
   onDismiss: () => void;
   onOpen: (mint: string) => void;
   onWatch: (mint: string) => void;
@@ -631,7 +643,7 @@ function CallsView({
       {showNotice && (
         <div className="flex items-start justify-between gap-3 rounded-lg border border-gold/30 bg-panel p-3">
           <p className="text-sm text-muted">
-            A call is logged in this browser at the market cap Talons first sees it pass the gate. Memecoins rug. This is not financial advice.
+            A call is logged {shared ? "once for every visitor" : "in this browser"} at the market cap Talons first sees it pass the gate. Memecoins rug. This is not financial advice.
           </p>
           <button type="button" onClick={onDismiss} className="h-11 shrink-0 px-2 text-sm text-gold">
             Hide
@@ -783,7 +795,7 @@ function WatchView({
   );
 }
 
-function RecordView({ book, now, onOpen }: { book: CallRec[]; now: number | null; onOpen: (mint: string) => void }) {
+function RecordView({ book, now, shared, onOpen }: { book: CallRec[]; now: number | null; shared: boolean; onOpen: (mint: string) => void }) {
   const rows = book
     .map((row) => {
       const peakX = row.callMcap > 0 ? row.peakMcap / row.callMcap : 1;
@@ -804,9 +816,11 @@ function RecordView({ book, now, onOpen }: { book: CallRec[]; now: number | null
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="font-mono text-xs tracking-widest text-dim uppercase">Track record</p>
-          <h1 className="text-2xl font-semibold tracking-tight">What this browser called</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{shared ? "One book for every visitor" : "What this browser called"}</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted">
-            Entry is the market cap at the first pass. Paper trade sells half at 2x, cuts at 0.6x before that, and trails the rest 35% off the high, net of about 2.5%.
+            {shared
+              ? "Entry is the market cap the first time the gate passed, for everyone. Paper trade sells half at 2x, cuts at 0.6x before that, and trails the rest 35% off the high, net of about 2.5%."
+              : "Entry is the market cap at the first pass in this browser. Connect Postgres on Vercel and the book becomes the same for every visitor."}
           </p>
         </div>
         {best && (

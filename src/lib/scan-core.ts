@@ -299,6 +299,8 @@ async function scanFresh(): Promise<ScanResult> {
     scannedAt: now,
     sources,
     error: tokens.length ? null : "Market data did not come back. Retry in a few seconds.",
+    shared: false,
+    book: [],
   };
 }
 

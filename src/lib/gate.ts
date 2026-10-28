@@ -60,6 +60,8 @@ export interface ScanResult {
   scannedAt: number;
   sources: SourceStatus[];
   error: string | null;
+  shared: boolean;
+  book: import("./book").CallRec[];
 }
 
 export interface Candle {
