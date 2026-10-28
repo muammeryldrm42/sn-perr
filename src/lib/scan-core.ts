@@ -226,7 +226,21 @@ async function pairsFor(mints: string[]): Promise<{ pairs: DexPair[]; ok: boolea
 }
 
 function rank(tokens: Scored[]): Scored[] {
+  const called = tokens.filter((token) => token.called).sort((a, b) => b.score - a.score);
+  const fresh = called.filter((token) => token.path === "fresh").slice(0, 4);
+  const rest = called.filter((token) => token.path !== "fresh");
+  const kept = new Set([...fresh, ...rest].slice(0, 12).map((token) => token.mint));
   return tokens
+    .map((token) => {
+      if (!token.called || kept.has(token.mint)) return token;
+      return {
+        ...token,
+        called: false,
+        path: null,
+        tier: null,
+        blockers: ["Held — a stronger signal is ahead this pass"],
+      };
+    })
     .sort((a, b) => Number(b.called) - Number(a.called) || b.score - a.score || b.volH1 - a.volH1)
     .slice(0, 80);
 }

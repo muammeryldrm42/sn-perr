@@ -79,50 +79,65 @@ export function scoreToken(t: MarketToken, now = Date.now()): Scored {
   const liqRatio = t.mcap > 0 ? t.liq / t.mcap : 0;
   const buyRatio = t.buysH1 / Math.max(1, t.sellsH1);
   const dumping = t.chgH1 <= -20 || (t.chgH6 <= -45 && t.chgH1 < 0);
+  const rollingOver = t.chgM5 <= -8;
+  const chased = (t.chgH1 >= 160 && t.chgM5 < 6) || (t.chgH24 >= 400 && t.chgH1 < 10 && t.chgM5 < 8);
   const sellHeavy = t.sellsH1 > t.buysH1 * 1.8 && t.buysH1 + t.sellsH1 > 24;
   const thin = t.liq < 3_000 || (t.mcap > 40_000 && liqRatio < 0.025);
   const sizeOk = t.mcap >= 5_000 && t.mcap <= 40_000_000;
-  const health = !dumping && !sellHeavy && !thin && sizeOk;
+  const health = !dumping && !sellHeavy && !thin && sizeOk && !rollingOver && !chased;
+  const m5Buys = t.buysM5 >= t.sellsM5;
 
   const fresh =
-    ageMin >= 1 &&
-    ageMin <= 90 &&
-    t.mcap >= 4_000 &&
-    t.mcap <= 180_000 &&
-    (t.chgM5 >= 8 || t.chgH1 >= 18 || t.volM5 >= 2_000) &&
+    ageMin >= 3 &&
+    ageMin <= 75 &&
+    t.mcap >= 6_000 &&
+    t.mcap <= 150_000 &&
+    (t.chgM5 >= 10 || t.chgH1 >= 22) &&
+    m5Buys &&
     t.buysM5 + t.buysH1 >= t.sellsM5 + t.sellsH1 &&
-    t.liq >= 2_000;
+    t.liq >= 3_000 &&
+    !rollingOver &&
+    !chased;
 
   const runner =
-    t.mcap >= 10_000 &&
-    t.mcap <= 12_000_000 &&
-    (t.chgH1 >= 18 || (t.chgH6 >= 35 && t.chgH1 > -8) || t.chgM5 >= 15) &&
-    (t.volH1 >= 6_000 || t.volH24 >= 50_000) &&
-    buyRatio >= 0.9 &&
-    t.liq >= 6_000 &&
-    liqRatio >= 0.03 &&
-    t.chgH1 > -20;
+    t.mcap >= 12_000 &&
+    t.mcap <= 8_000_000 &&
+    (t.chgH1 >= 20 || (t.chgH6 >= 40 && t.chgH1 >= 0) || t.chgM5 >= 12) &&
+    (t.chgH1 < 90 || t.chgM5 >= 4) &&
+    (t.volH1 >= 8_000 || t.volM5 >= 2_500) &&
+    buyRatio >= 1.05 &&
+    m5Buys &&
+    t.liq >= 8_000 &&
+    liqRatio >= 0.04 &&
+    t.chgH1 > -12 &&
+    !chased;
 
   const graduated =
     !PUMP_CURVE.has(t.dex) &&
-    ageMin <= 60 * 48 &&
-    t.mcap >= 25_000 &&
-    t.mcap <= 20_000_000 &&
-    t.volH24 >= 30_000 &&
-    (t.chgH1 >= 8 || t.chgH6 >= 20) &&
-    buyRatio >= 0.85 &&
-    t.liq >= 8_000 &&
-    liqRatio >= 0.03 &&
-    t.chgH1 > -15;
+    ageMin >= 8 &&
+    ageMin <= 60 * 36 &&
+    t.mcap >= 30_000 &&
+    t.mcap <= 12_000_000 &&
+    t.volH1 >= 8_000 &&
+    (t.chgH1 >= 12 || (t.chgH6 >= 30 && t.chgH1 >= 0 && t.chgM5 >= 0)) &&
+    buyRatio >= 1 &&
+    m5Buys &&
+    t.liq >= 10_000 &&
+    liqRatio >= 0.04 &&
+    !rollingOver &&
+    !chased;
 
   const boosted =
-    (t.boosts >= 20 || (t.dexPaid && t.boosts >= 8)) &&
-    t.mcap >= 12_000 &&
-    t.mcap <= 25_000_000 &&
-    (t.volH1 >= 4_000 || t.volH24 >= 40_000) &&
-    t.chgH1 > -12 &&
-    buyRatio >= 0.75 &&
-    t.liq >= 6_000;
+    (t.boosts >= 30 || (t.dexPaid && t.boosts >= 12)) &&
+    t.mcap >= 15_000 &&
+    t.mcap <= 15_000_000 &&
+    (t.chgH1 >= 12 || t.chgM5 >= 8) &&
+    (t.volH1 >= 6_000 || t.volM5 >= 1_500) &&
+    buyRatio >= 1 &&
+    m5Buys &&
+    t.liq >= 8_000 &&
+    !rollingOver &&
+    !chased;
 
   let path: Proof | null = null;
   if (health && runner) path = "runner";
@@ -144,6 +159,8 @@ export function scoreToken(t: MarketToken, now = Date.now()): Scored {
   plus += (t.twitter ? 2 : 0) + (t.website ? 1 : 0) + (t.telegram ? 1 : 0);
   if (ageMin >= 8 && ageMin <= 360) plus += 4;
   if (dumping) pen += 28;
+  if (rollingOver) pen += 18;
+  if (chased) pen += 22;
   if (sellHeavy) pen += 16;
   if (thin) pen += 12;
   if (t.chgH1 > 280) pen += 6;
@@ -169,6 +186,8 @@ export function scoreToken(t: MarketToken, now = Date.now()): Scored {
   const checks: Check[] = [
     { label: "Market cap between $5K and $40M", ok: sizeOk },
     { label: "Not dumping over the last hour", ok: !dumping },
+    { label: "Last 5 minutes are not rolling over", ok: !rollingOver },
+    { label: "Not chasing a move that already happened", ok: !chased },
     { label: "Buys are holding against sells", ok: !sellHeavy },
     { label: "Liquidity matches the size", ok: !thin },
     { label: "Volume is actually trading", ok: t.volH1 >= 3_000 || t.volM5 >= 800 },
@@ -178,7 +197,8 @@ export function scoreToken(t: MarketToken, now = Date.now()): Scored {
   if (path === "runner") reasons.push("Price is running and the volume is real");
   if (path === "graduated") reasons.push("Live on a pool, with size and buy pressure");
   if (path === "boosted") reasons.push("DexScreener profile or boosts, and it is still trading");
-  if (path === "fresh") reasons.push("Launched in the last 90 minutes and already moving");
+  if (path === "fresh") reasons.push("New pair, and the last minutes are already bidding");
+  if (t.chgM5 >= 8) reasons.push(`Up ${Math.round(t.chgM5)}% in the last 5 minutes`);
   if (buyRatio >= 1.25) reasons.push("More buys than sells this hour");
   if (t.chgH1 >= 12) reasons.push(`Up ${Math.round(t.chgH1)}% in the last hour`);
   if (liqRatio >= 0.08) reasons.push("Liquidity is thick for the market cap");
@@ -190,6 +210,8 @@ export function scoreToken(t: MarketToken, now = Date.now()): Scored {
   if (!path) {
     if (!sizeOk) blockers.push(t.mcap < 5_000 ? "Still under $5K" : "Already too large for a call");
     if (dumping) blockers.push("Price is dumping");
+    if (rollingOver) blockers.push("Selling off over the last 5 minutes");
+    if (chased) blockers.push("The move already happened");
     if (sellHeavy) blockers.push("Sells are overwhelming buys");
     if (thin) blockers.push("Liquidity is too thin");
     if (blockers.length === 0) blockers.push("No proof yet — needs a run, a live pool, boosts, or a fresh move");

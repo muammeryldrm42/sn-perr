@@ -910,11 +910,12 @@ function MethodView({ sources }: { sources: ScanResult["sources"] }) {
           </div>
         ))}
       </div>
-      <Rule title="Runner" body="Market cap $10K–$12M, up hard on the hour or the 6-hour window, real volume, buys holding, liquidity at least 3% of the cap." />
-      <Rule title="Graduated" body="Off the pump.fun curve, under two days old, $25K–$20M, daily volume, and the price still leaning up." />
-      <Rule title="Boosted" body="DexScreener boosts or a paid profile, with volume still printing and sells not in control." />
-      <Rule title="Fresh" body="Risky tier. Launched in the last 90 minutes, $4K–$180K, already moving, buys at least matching sells." />
-      <Rule title="Health veto" body="No call if it is dumping, sells overwhelm buys, liquidity is thin for the size, or the cap is under $5K or over $40M." />
+      <Rule title="Runner" body="Still bidding. Market cap $12K–$8M, the hour or the last 5 minutes is up, buys lead sells, and liquidity is at least 4% of the cap. A move that already ran and stalled is not a call." />
+      <Rule title="Graduated" body="Off the pump curve, at least 8 minutes old, under a day and a half, with hourly volume and the 5-minute window not red." />
+      <Rule title="Boosted" body="Real DexScreener boosts only count if price is moving with them. A paid profile with no bid is not a signal." />
+      <Rule title="Fresh" body="Risky. Three to 75 minutes old, $6K–$150K, and the last 5 minutes are already green with buys ahead of sells." />
+      <Rule title="Health veto" body="No call if it is dumping, the last 5 minutes are rolling over, sells overwhelm buys, liquidity is thin, or the move already happened." />
+      <Rule title="How many" body="Each pass keeps the strongest 12. Up to 4 of those slots stay open for fresh launches, so a paid coin cannot fill the whole board." />
       <Rule
         title="Tiers"
         body="Fresh launches are Risky. Conservative needs thicker liquidity, a calmer hour, a social or boosts, and buys ahead of sells. Everything else that passes is Balanced."
@@ -1099,6 +1100,7 @@ function TokenRow({
             <span>{dexLabel(token.dex)}</span>
             {now && token.createdAt ? <span>{fmtAge(now - token.createdAt)}</span> : null}
             <span>{fmtUsd(token.mcap)}</span>
+            {token.called ? <span className={clsxPct(token.chgM5)}>5m {fmtPct(token.chgM5)}</span> : null}
             {note ? <span className="text-warn">{note}</span> : null}
           </span>
         </span>
