@@ -77,13 +77,17 @@ async function geckoJson(url: string): Promise<unknown | null> {
   return null;
 }
 
-async function getJson(url: string): Promise<unknown | null> {
+async function getJson(url: string, extra?: Record<string, string>): Promise<unknown | null> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 9000);
   try {
     const res = await fetch(url, {
       signal: ctrl.signal,
-      headers: { accept: "application/json", "user-agent": "TalonsCalls/1.0" },
+      headers: {
+        accept: "application/json",
+        "user-agent": "Mozilla/5.0 (compatible; TalonsCalls/1.0)",
+        ...extra,
+      },
     });
     if (!res.ok) return null;
     return await res.json();
@@ -299,9 +303,10 @@ export async function buildScan(): Promise<ScanResult> {
 
 async function pumpClimbers(now: number): Promise<string[]> {
   const pages = await Promise.all(
-    [160, 420, 800].map((offset) =>
+    [0, 40, 80].map((offset) =>
       getJson(
         `https://frontend-api-v3.pump.fun/coins?offset=${offset}&limit=40&sort=created_timestamp&order=DESC&includeNsfw=false`,
+        { origin: "https://pump.fun", referer: "https://pump.fun/" },
       ),
     ),
   );
@@ -322,7 +327,7 @@ async function pumpClimbers(now: number): Promise<string[]> {
       if (!mint || seen.has(mint) || IGNORE.has(mint) || coin.nsfw || coin.is_banned || coin.hidden) continue;
       const age = coin.created_timestamp ? (now - coin.created_timestamp) / 60_000 : 9_999;
       const mcap = num(coin.usd_market_cap);
-      if (age < 4 || age > 70 || mcap < 12_000 || mcap > 80_000) continue;
+      if (age < 4 || age > 90 || mcap < 9_000 || mcap > 100_000) continue;
       seen.add(mint);
       picks.push({ mint, mcap });
     }
@@ -436,7 +441,7 @@ export async function buildCandles(mint: string, aggregate = 1, pair = ""): Prom
 async function loadSpan(mint: string, span: number, pair: string): Promise<Candle[]> {
   const key = `${mint}:${span}`;
   const hit = candleCache.get(key);
-  if (hit && Date.now() - hit.at < 15_000) return hit.rows;
+  if (hit && Date.now() - hit.at < 90_000) return hit.rows;
   const rows = await candlesFresh(mint, span, pair);
   if (rows.length) candleCache.set(key, { at: Date.now(), rows });
   return rows;

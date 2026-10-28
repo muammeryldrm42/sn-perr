@@ -29,13 +29,14 @@ export function TokenChart({
   const [span, setSpan] = useState<1 | 5 | 15>(5);
   const [status, setStatus] = useState<"loading" | "empty" | "ready">("loading");
   const [note, setNote] = useState("");
+  const [useEmbed, setUseEmbed] = useState(false);
   const [beat, setBeat] = useState(0);
   const pair = pairOf(pairUrl);
   const drawn = useRef<1 | 5 | 15>(5);
   const closeChart = useRef(() => {});
 
   useEffect(() => {
-    const id = window.setInterval(() => setBeat((value) => value + 1), 15_000);
+    const id = window.setInterval(() => setBeat((value) => value + 1), 45_000);
     return () => window.clearInterval(id);
   }, [mint]);
 
@@ -54,10 +55,14 @@ export function TokenChart({
       }
       if (dead || !host.current) return;
       if (rows.length < 2) {
-        if (drawn.current !== span) setNote("That timeframe did not load.");
-        else setStatus("empty");
+        if (!closeChart.current || drawn.current === span) {
+          setUseEmbed(true);
+          setNote("");
+          setStatus("ready");
+        } else setNote("That timeframe did not load.");
         return;
       }
+      setUseEmbed(false);
 
       const { CandlestickSeries, ColorType, CrosshairMode, LineStyle, createChart, createSeriesMarkers } = await import("lightweight-charts");
       if (dead || !host.current) return;
@@ -208,13 +213,25 @@ export function TokenChart({
       </div>
       {note ? <p className="mb-2 font-mono text-xs text-warn">{note}</p> : null}
       <div className="relative h-[28rem] overflow-hidden rounded-lg bg-[#0b0d12]">
-        {status === "loading" && <div className="absolute inset-0 animate-pulse bg-[#11151c]" />}
-        {status === "empty" && (
-          <div className="absolute inset-0 grid place-items-center px-4 text-center text-sm text-muted">
-            Chart data did not come back. Try again in a moment.
-          </div>
+        {useEmbed ? (
+          <iframe
+            title="Market cap chart"
+            src={`https://dexscreener.com/solana/${pair || mint}?embed=1&theme=dark&chartTheme=dark&chartStyle=1&chartType=usd&interval=${span}&info=0&trades=0`}
+            className="h-full w-full border-0"
+            allow="clipboard-write; fullscreen"
+            loading="lazy"
+          />
+        ) : (
+          <>
+            {status === "loading" && <div className="absolute inset-0 animate-pulse bg-[#11151c]" />}
+            {status === "empty" && (
+              <div className="absolute inset-0 grid place-items-center px-4 text-center text-sm text-muted">
+                Chart data did not come back. Try again in a moment.
+              </div>
+            )}
+            <div ref={host} className={`h-full w-full ${status === "ready" ? "" : "invisible"}`} />
+          </>
         )}
-        <div ref={host} className={`h-full w-full ${status === "ready" ? "" : "invisible"}`} />
       </div>
     </div>
   );
