@@ -511,7 +511,7 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
           {view === "radar" && (
             <RadarView tokens={radar.slice(0, 30)} watch={watch} now={now} onOpen={openToken} onWatch={toggleWatch} />
           )}
-          {view === "record" && <RecordView book={book} now={now} shared={shared} onOpen={openToken} />}
+          {view === "record" && <RecordView book={book} shared={shared} onOpen={openToken} />}
           {view === "method" && <MethodView sources={sources} />}
           {view === "watch" && (
             <WatchView tokens={watched} missing={watch.length - watched.length} bookByMint={bookByMint} watch={watch} now={now} onOpen={openToken} onWatch={toggleWatch} />
@@ -795,7 +795,7 @@ function WatchView({
   );
 }
 
-function RecordView({ book, now, shared, onOpen }: { book: CallRec[]; now: number | null; shared: boolean; onOpen: (mint: string) => void }) {
+function RecordView({ book, shared, onOpen }: { book: CallRec[]; shared: boolean; onOpen: (mint: string) => void }) {
   const [showTop, setShowTop] = useState(false);
   const rows = book
     .map((row) => {
@@ -891,35 +891,8 @@ function RecordView({ book, now, shared, onOpen }: { book: CallRec[]; now: numbe
           )}
         </div>
       )}
-      {rows.length === 0 ? (
-        <Empty title="The book is empty" body="Calls land here the moment the gate passes. Leave the terminal open and the peaks update every scan." />
-      ) : (
-        <div className="flex flex-col gap-2">
-          {rows.map((row) => (
-            <button
-              key={row.mint}
-              type="button"
-              onClick={() => onOpen(row.mint)}
-              className="flex items-center gap-3 rounded-lg border border-line bg-panel p-3 text-left"
-            >
-              <TokenMark token={row} />
-              <span className="min-w-0 flex-1">
-                <span className="flex items-baseline gap-2">
-                  <span className="truncate font-mono font-semibold">{row.symbol}</span>
-                  <span className={`font-mono text-xs ${pathClass(row.path)}`}>{pathLabel(row.path)}</span>
-                </span>
-                <span className="mt-1 block text-xs text-dim">
-                  Called {now ? fmtAge(now - row.calledAt) : "…"} ago at {fmtUsd(row.callMcap)}
-                </span>
-              </span>
-              <span className="text-right">
-                <span className={`block font-mono ${clsxPct(row.nowX - 1)}`}>{fmtX(row.nowX)}</span>
-                <span className="block font-mono text-xs text-gold">peak {fmtX(row.peakX)}</span>
-                <span className="block font-mono text-xs text-dim">{row.paper.status} {fmtX(row.paper.x)}</span>
-              </span>
-            </button>
-          ))}
-        </div>
+      {rows.length === 0 && (
+        <Empty title="The book is empty" body="Calls land here the moment the gate passes. Top X opens once one of them runs." />
       )}
     </section>
   );
