@@ -361,11 +361,11 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
   const board = new Map<string, Scored>();
   const cooling = new Set<string>();
   for (const token of matched) {
-    if (token.called) board.set(token.mint, token);
+    if (token.called && token.path === "fresh") board.set(token.mint, token);
   }
   if (now) {
     for (const rec of book) {
-      if (board.has(rec.mint) || now - rec.calledAt > 8 * 60 * 60 * 1000) continue;
+      if (rec.path !== "fresh" || board.has(rec.mint) || now - rec.calledAt > 8 * 60 * 60 * 1000) continue;
       const live = pool.find((token) => token.mint === rec.mint);
       const row = live ?? bookToken(rec);
       if (q && !`${row.symbol} ${row.name} ${row.mint}`.toLowerCase().includes(q)) continue;
@@ -394,8 +394,11 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
     .filter((row) => row.peakX >= 2)
     .sort((a, b) => b.peakX - a.peakX)
     .slice(0, 8);
-  const unseen = book.filter((row) => row.calledAt > seenAt).length;
-  const latestAlerts = [...book].sort((a, b) => b.calledAt - a.calledAt).slice(0, 9);
+  const unseen = book.filter((row) => row.path === "fresh" && row.calledAt > seenAt).length;
+  const latestAlerts = [...book]
+    .filter((row) => row.path === "fresh")
+    .sort((a, b) => b.calledAt - a.calledAt)
+    .slice(0, 9);
   const age = now ? fmtAge(now - scannedAt) : "now";
   const feedDown = sources.some((source) => source.id === "pairs" && !source.ok);
 
@@ -699,7 +702,7 @@ function CallsView({
         <p className="font-mono text-xs tracking-widest text-dim uppercase">Solana calls</p>
         <h1 className="text-2xl font-semibold tracking-tight">Only the ones that prove it</h1>
         <p className="mt-1 hidden max-w-2xl text-sm text-muted sm:block">
-          New coins, runners, graduations, confirmed boosts, and reclaims. A call stays on this board for 8 hours. Cooling means the live gate let go. The call did not.
+          Only new launches. Four to 70 minutes old, $12K–$80K, already off the open and still being bought. Older coins stay off this board.
         </p>
       </div>
       <div className="grid grid-cols-3 gap-2">
@@ -978,12 +981,9 @@ function MethodView({ sources }: { sources: ScanResult["sources"] }) {
           </div>
         ))}
       </div>
-      <Rule title="Runner" body="Still able to multiply. Up to about $1.5M, the last 5 minutes are not dead, and buys lead sells." />
-      <Rule title="Graduated" body="Off the curve within a day, under about $1.2M, and the 5-minute window is not red." />
-      <Rule title="Boosted" body="A paid profile only counts when price is bidding with it. The boost alone is not a call." />
-      <Rule title="Fresh" body="Four to 70 minutes old, $12K–$80K, already off the open, buys ahead of sells." />
-      <Rule title="Reclaim" body="The hour is red, but the last 5 minutes flipped green with buys in control. Not a freefall." />
-      <Rule title="How many" body="Each pass adds at most 10 live names. Anything already called stays on the board for 8 hours, marked Cooling if the gate lets go." />
+      <Rule title="The only call" body="A new launch. Four to 70 minutes old, market cap $12K–$80K, the last 5 minutes are green, and buys are ahead of sells. If it has not left the open, it is not a call." />
+      <Rule title="What is not a call" body="Runners, graduations, boosts, and dip reclaims are not called. They can still sit on the radar. This board is only the new ones." />
+      <Rule title="How many" body="Each pass keeps the strongest new launches. A call stays up for 8 hours and is marked Cooling if the live bid fades." />
       <Rule
         title="Tiers"
         body="Fresh launches are Risky. Conservative needs thicker liquidity, a calmer hour, a social or boosts, and buys ahead of sells. Everything else that passes is Balanced."
