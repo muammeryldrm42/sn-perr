@@ -83,8 +83,10 @@ export function scoreToken(t: MarketToken, now = Date.now()): Scored {
   const chased = (t.chgH1 >= 160 && t.chgM5 < 6) || (t.chgH24 >= 400 && t.chgH1 < 10 && t.chgM5 < 8);
   const sellHeavy = t.sellsH1 > t.buysH1 * 1.8 && t.buysH1 + t.sellsH1 > 24;
   const thin = t.liq < 3_000 || (t.mcap > 40_000 && liqRatio < 0.025);
+  const boostFarm = t.boosts >= 25 && t.volH1 < Math.max(10_000, t.mcap * 0.12);
+  const thinRip = t.chgH1 >= 70 && t.volH1 < t.mcap * 0.2;
   const sizeOk = t.mcap >= 5_000 && t.mcap <= 40_000_000;
-  const health = !dumping && !sellHeavy && !thin && sizeOk && !rollingOver && !chased;
+  const health = !dumping && !sellHeavy && !thin && sizeOk && !rollingOver && !chased && !boostFarm && !thinRip;
   const m5Buys = t.buysM5 >= t.sellsM5;
 
   const fresh =
@@ -97,7 +99,9 @@ export function scoreToken(t: MarketToken, now = Date.now()): Scored {
     t.buysM5 + t.buysH1 > t.sellsM5 + t.sellsH1 &&
     t.liq >= 2_500 &&
     !rollingOver &&
-    !chased;
+    !chased &&
+    !boostFarm &&
+    !thinRip;
 
   const runner =
     ageMin <= 60 * 24 &&
@@ -130,7 +134,7 @@ export function scoreToken(t: MarketToken, now = Date.now()): Scored {
 
   const boosted =
     (t.boosts >= 15 || (t.dexPaid && t.boosts >= 5)) &&
-    ageMin <= 60 * 36 &&
+    ageMin <= 60 * 12 &&
     t.mcap >= 15_000 &&
     t.mcap <= 1_000_000 &&
     (t.chgM5 >= 4 || (t.chgH1 >= 12 && t.chgM5 >= 0)) &&
@@ -140,7 +144,9 @@ export function scoreToken(t: MarketToken, now = Date.now()): Scored {
     t.liq >= 6_000 &&
     !rollingOver &&
     !chased &&
-    !dumping;
+    !dumping &&
+    !boostFarm &&
+    !thinRip;
 
   const reclaim =
     ageMin >= 12 &&
@@ -153,7 +159,9 @@ export function scoreToken(t: MarketToken, now = Date.now()): Scored {
     t.buysM5 >= Math.max(1, t.sellsM5) * 1.1 &&
     t.volM5 >= 1_500 &&
     t.liq >= 6_000 &&
-    liqRatio >= 0.03;
+    liqRatio >= 0.03 &&
+    !boostFarm &&
+    !thinRip;
 
   let path: Proof | null = null;
   if (fresh && !dumping && !sellHeavy && t.chgH1 > -8) path = "fresh";
@@ -171,7 +179,9 @@ export function scoreToken(t: MarketToken, now = Date.now()): Scored {
   plus += Math.min(8, Math.log10(Math.max(t.volH1, 1)) * 2.2);
   if (liqRatio >= 0.08) plus += 8;
   else if (liqRatio >= 0.04) plus += 4;
-  if (t.boosts > 0) plus += Math.min(8, Math.log2(t.boosts + 1));
+  if (t.boosts > 0 && t.boosts < 25) plus += Math.min(6, Math.log2(t.boosts + 1));
+  if (boostFarm) pen += 30;
+  if (thinRip) pen += 24;
   if (t.dexPaid) plus += 4;
   plus += (t.twitter ? 2 : 0) + (t.website ? 1 : 0) + (t.telegram ? 1 : 0);
   if (ageMin >= 4 && ageMin <= 40) plus += 8;
@@ -211,7 +221,8 @@ export function scoreToken(t: MarketToken, now = Date.now()): Scored {
     { label: "Not chasing a move that already happened", ok: !chased },
     { label: "Buys are holding against sells", ok: !sellHeavy },
     { label: "Liquidity matches the size", ok: !thin },
-    { label: "Volume is actually trading", ok: t.volH1 >= 3_000 || t.volM5 >= 800 },
+    { label: "Not a paid boost with no real volume", ok: !boostFarm },
+    { label: "The hourly move has trades behind it", ok: !thinRip },
   ];
 
   const reasons: string[] = [];

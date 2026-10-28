@@ -72,6 +72,15 @@ export function TokenChart({
 
       const { priceUsd: livePrice, mcap: liveMcap, callMcap: liveCall, calledAt: liveAt } = live.current;
       const lastClose = rows[rows.length - 1]?.c ?? 0;
+      if (livePrice > 0 && lastClose > 0) {
+        const drift = lastClose / livePrice;
+        if (drift > 2.5 || drift < 1 / 2.5) {
+          setUseEmbed(true);
+          setNote("");
+          setStatus("ready");
+          return;
+        }
+      }
       const scale = lastClose > 0 && liveMcap > 0 ? liveMcap / lastClose : livePrice > 0 && liveMcap > 0 ? liveMcap / livePrice : 1;
       const seen = new Set<number>();
       const bars: { time: number; open: number; high: number; low: number; close: number }[] = [];

@@ -382,6 +382,7 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
     for (const rec of book) {
       if (board.has(rec.mint) || now - rec.calledAt > 8 * 60 * 60 * 1000) continue;
       const live = pool.find((token) => token.mint === rec.mint);
+      if (live && live.createdAt > 0 && now - live.createdAt > 24 * 60 * 60 * 1000) continue;
       const row = live ?? bookToken(rec);
       if (q && !`${row.symbol} ${row.name} ${row.mint}`.toLowerCase().includes(q)) continue;
       board.set(rec.mint, { ...row, called: true, path: rec.path, tier: row.tier ?? (rec.path === "fresh" ? "risky" : "balanced") });
