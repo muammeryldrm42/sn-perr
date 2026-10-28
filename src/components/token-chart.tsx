@@ -59,7 +59,7 @@ export function TokenChart({
         return;
       }
 
-      const { CandlestickSeries, ColorType, createChart, createSeriesMarkers } = await import("lightweight-charts");
+      const { CandlestickSeries, ColorType, CrosshairMode, LineStyle, createChart, createSeriesMarkers } = await import("lightweight-charts");
       if (dead || !host.current) return;
       closeChart.current();
 
@@ -102,8 +102,21 @@ export function TokenChart({
         rightPriceScale: { borderColor: "#222836" },
         timeScale: { borderColor: "#222836", timeVisible: true, secondsVisible: false },
         crosshair: {
-          vertLine: { color: "#5e6572", labelBackgroundColor: "#171a21" },
-          horzLine: { color: "#5e6572", labelBackgroundColor: "#171a21" },
+          mode: CrosshairMode.Normal,
+          vertLine: {
+            visible: true,
+            color: "#c5ceda",
+            width: 1,
+            style: LineStyle.Dashed,
+            labelBackgroundColor: "#171a21",
+          },
+          horzLine: {
+            visible: true,
+            color: "#ef5350",
+            width: 1,
+            style: LineStyle.Dotted,
+            labelBackgroundColor: "#ef5350",
+          },
         },
       });
       const series = chart.addSeries(CandlestickSeries, {
