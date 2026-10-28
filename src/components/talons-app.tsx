@@ -1001,8 +1001,13 @@ function TokenView({
         </div>
       )}
       <div className="rounded-lg border border-line bg-panel p-3">
-        <p className="mb-2 font-mono text-xs tracking-widest text-dim uppercase">Price, 5m</p>
-        <TokenChart mint={mint} />
+        <TokenChart
+          mint={mint}
+          priceUsd={token?.priceUsd ?? 0}
+          mcap={token?.mcap ?? rec?.nowMcap ?? 0}
+          callMcap={rec?.callMcap}
+          calledAt={rec?.calledAt}
+        />
       </div>
       {token && token.reasons.length > 0 && (
         <div className="rounded-lg border border-line bg-panel p-4">

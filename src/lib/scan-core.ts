@@ -321,20 +321,22 @@ export async function buildSearch(query: string): Promise<Scored[]> {
   ).slice(0, 12);
 }
 
-export async function buildCandles(mint: string): Promise<Candle[]> {
-  const hit = candleCache.get(mint);
+export async function buildCandles(mint: string, aggregate = 1): Promise<Candle[]> {
+  const span = aggregate === 5 ? 5 : 1;
+  const key = `${mint}:${span}`;
+  const hit = candleCache.get(key);
   if (hit && Date.now() - hit.at < 60_000) return hit.rows;
-  const rows = await candlesFresh(mint);
-  if (rows.length) candleCache.set(mint, { at: Date.now(), rows });
+  const rows = await candlesFresh(mint, span);
+  if (rows.length) candleCache.set(key, { at: Date.now(), rows });
   return rows;
 }
 
-async function candlesFresh(mint: string): Promise<Candle[]> {
+async function candlesFresh(mint: string, aggregate: number): Promise<Candle[]> {
   const pools = await getJson(`https://api.geckoterminal.com/api/v2/networks/solana/tokens/${mint}/pools?page=1`);
   const pool = (asArray((pools as { data?: unknown } | null)?.data)[0] as { attributes?: { address?: string } } | undefined)?.attributes?.address;
   if (!pool) return [];
   const ohlcv = await getJson(
-    `https://api.geckoterminal.com/api/v2/networks/solana/pools/${pool}/ohlcv/minute?aggregate=5&limit=72&currency=usd`,
+    `https://api.geckoterminal.com/api/v2/networks/solana/pools/${pool}/ohlcv/minute?aggregate=${aggregate}&limit=120&currency=usd`,
   );
   const list = (ohlcv as { data?: { attributes?: { ohlcv_list?: unknown } } } | null)?.data?.attributes?.ohlcv_list;
   if (!Array.isArray(list)) return [];
@@ -342,8 +344,11 @@ async function candlesFresh(mint: string): Promise<Candle[]> {
   for (const row of list) {
     if (!Array.isArray(row) || row.length < 5) continue;
     const t = num(row[0]) * 1000;
+    const o = num(row[1]);
+    const h = num(row[2]);
+    const l = num(row[3]);
     const c = num(row[4]);
-    if (t > 0 && c > 0) candles.push({ t, c });
+    if (t > 0 && c > 0 && h > 0 && l > 0) candles.push({ t, o, h, l, c });
   }
   candles.sort((a, b) => a.t - b.t);
   return candles;
