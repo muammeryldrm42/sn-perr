@@ -53,6 +53,30 @@ interface Meta {
   telegram?: string;
 }
 
+async function geckoJson(url: string): Promise<unknown | null> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 9000);
+    try {
+      const res = await fetch(url, {
+        signal: ctrl.signal,
+        headers: { accept: "application/json;version=20230203", "user-agent": "TalonsCalls/1.0" },
+      });
+      if (res.status === 429 && attempt === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        continue;
+      }
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  return null;
+}
+
 async function getJson(url: string): Promise<unknown | null> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 9000);
@@ -386,12 +410,12 @@ export async function buildSearch(query: string): Promise<Scored[]> {
   ).slice(0, 12);
 }
 
-export async function buildCandles(mint: string, aggregate = 1): Promise<Candle[]> {
+export async function buildCandles(mint: string, aggregate = 1, pair = ""): Promise<Candle[]> {
   const span = aggregate === 15 ? 15 : aggregate === 5 ? 5 : 1;
   const key = `${mint}:${span}`;
   const hit = candleCache.get(key);
-  if (hit && Date.now() - hit.at < 60_000) return hit.rows;
-  const rows = await candlesFresh(mint, span);
+  if (hit && Date.now() - hit.at < 180_000) return hit.rows;
+  const rows = await candlesFresh(mint, span, pair);
   if (rows.length) candleCache.set(key, { at: Date.now(), rows });
   return rows;
 }
@@ -411,12 +435,9 @@ function deepestPool(payload: unknown): string | null {
   return best || null;
 }
 
-async function candlesFresh(mint: string, aggregate: number): Promise<Candle[]> {
-  const pools = await getJson(`https://api.geckoterminal.com/api/v2/networks/solana/tokens/${mint}/pools?page=1`);
-  const pool = deepestPool(pools);
-  if (!pool) return [];
-  const ohlcv = await getJson(
-    `https://api.geckoterminal.com/api/v2/networks/solana/pools/${pool}/ohlcv/minute?aggregate=${aggregate}&limit=500&currency=usd`,
+async function readOhlcv(pool: string, aggregate: number): Promise<Candle[]> {
+  const ohlcv = await geckoJson(
+    `https://api.geckoterminal.com/api/v2/networks/solana/pools/${pool}/ohlcv/minute?aggregate=${aggregate}&limit=240&currency=usd`,
   );
   const list = (ohlcv as { data?: { attributes?: { ohlcv_list?: unknown } } } | null)?.data?.attributes?.ohlcv_list;
   if (!Array.isArray(list)) return [];
@@ -432,4 +453,15 @@ async function candlesFresh(mint: string, aggregate: number): Promise<Candle[]> 
   }
   candles.sort((a, b) => a.t - b.t);
   return candles;
+}
+
+async function candlesFresh(mint: string, aggregate: number, pair = ""): Promise<Candle[]> {
+  if (pair) {
+    const direct = await readOhlcv(pair, aggregate);
+    if (direct.length >= 2) return direct;
+  }
+  const pools = await geckoJson(`https://api.geckoterminal.com/api/v2/networks/solana/tokens/${mint}/pools?page=1`);
+  const pool = deepestPool(pools);
+  if (!pool || pool === pair) return [];
+  return readOhlcv(pool, aggregate);
 }

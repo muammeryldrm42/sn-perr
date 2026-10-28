@@ -1083,6 +1083,7 @@ function TokenView({
           mcap={token?.mcap ?? rec?.nowMcap ?? 0}
           callMcap={rec?.callMcap}
           calledAt={rec?.calledAt}
+          pairUrl={pairUrl}
         />
       </div>
       {token && token.reasons.length > 0 && (
