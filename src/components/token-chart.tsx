@@ -29,15 +29,21 @@ export function TokenChart({
   const [span, setSpan] = useState<1 | 5 | 15>(5);
   const [status, setStatus] = useState<"loading" | "empty" | "ready">("loading");
   const [note, setNote] = useState("");
+  const [beat, setBeat] = useState(0);
   const pair = pairOf(pairUrl);
   const drawn = useRef<1 | 5 | 15>(5);
   const closeChart = useRef(() => {});
 
   useEffect(() => {
+    const id = window.setInterval(() => setBeat((value) => value + 1), 15_000);
+    return () => window.clearInterval(id);
+  }, [mint]);
+
+  useEffect(() => {
     const node = host.current;
     if (!node) return;
     let dead = false;
-    if (drawn.current === span) setStatus("loading");
+    if (!closeChart.current) setStatus("loading");
 
     void (async () => {
       let rows: Candle[] = [];
@@ -168,7 +174,7 @@ export function TokenChart({
     return () => {
       dead = true;
     };
-  }, [mint, span, pair, priceUsd, mcap, callMcap, calledAt]);
+  }, [mint, span, pair, priceUsd, mcap, callMcap, calledAt, beat]);
 
   useEffect(() => () => closeChart.current(), []);
 

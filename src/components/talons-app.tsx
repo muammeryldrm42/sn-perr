@@ -261,7 +261,7 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
   useEffect(() => {
     const id = window.setInterval(() => {
       if (document.visibilityState === "visible") void refresh();
-    }, 30_000);
+    }, 12_000);
     return () => window.clearInterval(id);
   }, []);
 
@@ -277,6 +277,21 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
       })
       .catch(() => undefined);
   }, [view, mint, tokens, extra]);
+
+  useEffect(() => {
+    if (view !== "token" || !mint) return;
+    const pull = () => {
+      void searchMarket({ data: { q: mint } })
+        .then((rows) => {
+          const hit = rows.find((row) => row.mint === mint);
+          if (!hit) return;
+          setExtra((prev) => [hit, ...prev.filter((row) => row.mint !== hit.mint)]);
+        })
+        .catch(() => undefined);
+    };
+    const id = window.setInterval(pull, 12_000);
+    return () => window.clearInterval(id);
+  }, [view, mint]);
 
   async function refresh() {
     setRefreshing(true);
@@ -712,7 +727,7 @@ function CallsView({
       {showNotice && (
         <div className="flex items-start justify-between gap-3 rounded-lg border border-gold/30 bg-panel p-3">
           <p className="text-sm text-muted">
-            A call is logged {shared ? "once for every visitor" : "in this browser"} at the market cap Talons first sees it pass the gate. Memecoins rug. This is not financial advice.
+            A call is logged {shared ? "once for every visitor on the public site" : "only in this preview, not on the Vercel site"} at the market cap Talons first sees it pass the gate. Memecoins rug. This is not financial advice.
           </p>
           <button type="button" onClick={onDismiss} className="h-11 shrink-0 px-2 text-sm text-gold">
             Hide

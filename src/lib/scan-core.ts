@@ -291,7 +291,7 @@ const candleCache = new Map<string, { at: number; rows: Candle[] }>();
 
 export async function buildScan(): Promise<ScanResult> {
   const now = Date.now();
-  if (cachedScan && now - cachedScan.at < 20_000 && cachedScan.value.tokens.length) return cachedScan.value;
+  if (cachedScan && now - cachedScan.at < 12_000 && cachedScan.value.tokens.length) return cachedScan.value;
   const value = await scanFresh();
   if (value.tokens.length) cachedScan = { at: now, value };
   return value;
@@ -436,7 +436,7 @@ export async function buildCandles(mint: string, aggregate = 1, pair = ""): Prom
 async function loadSpan(mint: string, span: number, pair: string): Promise<Candle[]> {
   const key = `${mint}:${span}`;
   const hit = candleCache.get(key);
-  if (hit && Date.now() - hit.at < 180_000) return hit.rows;
+  if (hit && Date.now() - hit.at < 15_000) return hit.rows;
   const rows = await candlesFresh(mint, span, pair);
   if (rows.length) candleCache.set(key, { at: Date.now(), rows });
   return rows;
