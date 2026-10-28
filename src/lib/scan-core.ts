@@ -387,7 +387,7 @@ export async function buildSearch(query: string): Promise<Scored[]> {
 }
 
 export async function buildCandles(mint: string, aggregate = 1): Promise<Candle[]> {
-  const span = aggregate === 5 ? 5 : 1;
+  const span = aggregate === 15 ? 15 : aggregate === 5 ? 5 : 1;
   const key = `${mint}:${span}`;
   const hit = candleCache.get(key);
   if (hit && Date.now() - hit.at < 60_000) return hit.rows;
@@ -416,7 +416,7 @@ async function candlesFresh(mint: string, aggregate: number): Promise<Candle[]> 
   const pool = deepestPool(pools);
   if (!pool) return [];
   const ohlcv = await getJson(
-    `https://api.geckoterminal.com/api/v2/networks/solana/pools/${pool}/ohlcv/minute?aggregate=${aggregate}&limit=120&currency=usd`,
+    `https://api.geckoterminal.com/api/v2/networks/solana/pools/${pool}/ohlcv/minute?aggregate=${aggregate}&limit=500&currency=usd`,
   );
   const list = (ohlcv as { data?: { attributes?: { ohlcv_list?: unknown } } } | null)?.data?.attributes?.ohlcv_list;
   if (!Array.isArray(list)) return [];

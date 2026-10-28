@@ -25,7 +25,7 @@ export const loadCandles = createServerFn({ method: "GET" })
     const mint = typeof input === "object" && input && "mint" in input ? String((input as { mint: unknown }).mint) : "";
     if (!MINT.test(mint)) throw new Error("Invalid mint");
     const raw = typeof input === "object" && input && "aggregate" in input ? Number((input as { aggregate: unknown }).aggregate) : 1;
-    return { mint, aggregate: raw === 5 ? 5 : 1 };
+    return { mint, aggregate: raw === 15 ? 15 : raw === 5 ? 5 : 1 };
   })
   .handler(async ({ data }) => {
     const { buildCandles } = await import("./scan-core");

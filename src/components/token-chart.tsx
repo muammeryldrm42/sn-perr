@@ -18,7 +18,7 @@ export function TokenChart({
   calledAt?: number;
 }) {
   const host = useRef<HTMLDivElement>(null);
-  const [span, setSpan] = useState<1 | 5>(1);
+  const [span, setSpan] = useState<1 | 5 | 15>(1);
   const [status, setStatus] = useState<"loading" | "empty" | "ready">("loading");
 
   useEffect(() => {
@@ -53,8 +53,8 @@ export function TokenChart({
         if (seen.has(time)) continue;
         seen.add(time);
         const body = Math.max(candle.o, candle.c);
-        const high = Math.min(candle.h, body * 2.2);
-        const low = Math.max(candle.l, body / 2.2);
+        const high = Math.min(candle.h, body * 8);
+        const low = Math.max(candle.l, body / 8);
         bars.push({
           time,
           open: candle.o * scale,
@@ -90,12 +90,12 @@ export function TokenChart({
         },
       });
       const series = chart.addSeries(CandlestickSeries, {
-        upColor: "#3ddc6a",
-        downColor: "#ff6b84",
-        borderUpColor: "#3ddc6a",
-        borderDownColor: "#ff6b84",
-        wickUpColor: "#3ddc6a",
-        wickDownColor: "#ff6b84",
+        upColor: "#26a69a",
+        downColor: "#ef5350",
+        borderUpColor: "#26a69a",
+        borderDownColor: "#ef5350",
+        wickUpColor: "#26a69a",
+        wickDownColor: "#ef5350",
         priceFormat: {
           type: "custom",
           minMove: 1,
@@ -121,7 +121,7 @@ export function TokenChart({
           lineWidth: 1,
           lineStyle: 2,
           axisLabelVisible: true,
-          title: "Called",
+          title: `Called ${fmtUsd(callMcap)}`,
         });
         let nearest = bars[0].time;
         if (calledAt && calledAt > 0) {
@@ -142,7 +142,7 @@ export function TokenChart({
             position: "belowBar",
             color: "#e0b738",
             shape: "arrowUp",
-            text: "Call",
+            text: `Called ${fmtUsd(callMcap)}`,
           },
         ]);
       }
@@ -161,7 +161,7 @@ export function TokenChart({
   return (
     <div>
       <div className="mb-2 flex items-center gap-2">
-        {([1, 5] as const).map((item) => (
+        {([1, 5, 15] as const).map((item) => (
           <button
             key={item}
             type="button"
@@ -171,9 +171,9 @@ export function TokenChart({
             {item}m
           </button>
         ))}
-        <p className="ml-auto font-mono text-[10px] tracking-widest text-dim uppercase">TradingView</p>
+        <p className="ml-auto font-mono text-[10px] tracking-widest text-dim uppercase">Market cap</p>
       </div>
-      <div className="relative h-80">
+      <div className="relative h-[28rem]">
         {status === "loading" && <div className="absolute inset-0 animate-pulse rounded-lg bg-row" />}
         {status === "empty" && (
           <div className="absolute inset-0 grid place-items-center rounded-lg border border-line bg-row px-4 text-center text-sm text-muted">
