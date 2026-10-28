@@ -494,8 +494,17 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
                     className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-left"
                   >
                     <TokenMark token={row} size="size-8" />
-                    <span className="min-w-0 flex-1 truncate font-mono text-sm">{row.symbol}</span>
-                    <span className="font-mono text-xs text-dim">{fmtUsd(row.callMcap)}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-mono text-sm">{row.symbol}</span>
+                      <span className="block truncate text-xs text-dim">
+                        {pathLabel(row.path)}
+                        {now ? ` · ${fmtAge(now - row.calledAt)}` : ""}
+                        {` · ${fmtUsd(row.callMcap)}`}
+                      </span>
+                    </span>
+                    <span className={`font-mono text-xs ${row.callMcap > 0 ? clsxPct(row.nowMcap / row.callMcap - 1) : "text-dim"}`}>
+                      {row.callMcap > 0 ? fmtX(row.nowMcap / row.callMcap) : fmtUsd(row.nowMcap)}
+                    </span>
                   </button>
                 ))
               )}
@@ -1145,6 +1154,9 @@ function TokenRow({
   note?: string;
 }) {
   const since = rec && rec.callMcap > 0 ? rec.nowMcap / rec.callMcap : null;
+  const peak = rec && rec.callMcap > 0 ? Math.max(rec.peakMcap, rec.nowMcap) / rec.callMcap : null;
+  const reason = rec?.reasons[0] ?? token.reasons[0];
+  const calledAgo = rec && now ? fmtAge(now - rec.calledAt) : null;
   return (
     <div className="flex items-stretch gap-1 rounded-lg border border-line bg-panel p-2">
       <button type="button" onClick={() => onOpen(token.mint)} className="flex min-w-0 flex-1 items-center gap-3 rounded-md px-1 py-1 text-left">
@@ -1156,18 +1168,25 @@ function TokenRow({
           </span>
           <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-dim">
             <span className={`font-mono ${pathClass(token.path)}`}>{pathLabel(token.path)}</span>
-            <span>{dexLabel(token.dex)}</span>
-            {now && token.createdAt ? <span>{fmtAge(now - token.createdAt)}</span> : null}
+            {calledAgo ? <span>called {calledAgo}</span> : now && token.createdAt ? <span>{fmtAge(now - token.createdAt)}</span> : null}
             <span>{fmtUsd(token.mcap)}</span>
-            {token.called ? <span className={clsxPct(token.chgM5)}>5m {fmtPct(token.chgM5)}</span> : null}
+            {token.chgM5 !== 0 ? <span className={clsxPct(token.chgM5)}>5m {fmtPct(token.chgM5)}</span> : null}
             {note ? <span className="text-warn">{note}</span> : null}
           </span>
+          {reason ? <span className="mt-1 block truncate text-xs text-muted">{reason}</span> : null}
         </span>
         <span className="shrink-0 text-right">
-          <span className={`block font-mono text-sm ${clsxPct(token.chgH1)}`}>{fmtPct(token.chgH1)}</span>
-          <span className="block font-mono text-xs text-dim">
-            {since && Math.abs(since - 1) >= 0.05 ? fmtX(since) : `score ${token.score}`}
-          </span>
+          {since ? (
+            <>
+              <span className={`block font-mono text-sm ${clsxPct(since - 1)}`}>{fmtX(since)}</span>
+              <span className="block font-mono text-xs text-gold">{peak && peak > since + 0.05 ? `peak ${fmtX(peak)}` : "since call"}</span>
+            </>
+          ) : (
+            <>
+              <span className={`block font-mono text-sm ${clsxPct(token.chgH1)}`}>{fmtPct(token.chgH1)}</span>
+              <span className="block font-mono text-xs text-dim">score {token.score}</span>
+            </>
+          )}
         </span>
       </button>
       <button type="button" onClick={() => onWatch(token.mint)} aria-label={watched ? `Unstar ${token.symbol}` : `Star ${token.symbol}`} className="grid w-11 shrink-0 place-items-center">
