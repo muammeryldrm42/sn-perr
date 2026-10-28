@@ -168,7 +168,7 @@ function writeHash(view: View, mint: string | null) {
 function shareText(symbol: string, rec?: CallRec): string {
   if (!rec || !(rec.callMcap > 0)) return `${symbol} is on the Talons radar. Memecoins rug. Not financial advice.`;
   const nowX = rec.nowMcap / rec.callMcap;
-  const peakX = sanePeak(rec.callMcap, rec.nowMcap, rec.peakMcap) / rec.callMcap;
+  const peakX = sanePeak(rec.callMcap, rec.nowMcap, rec.peakMcap, 0, rec.liq) / rec.callMcap;
   return `${symbol} on Talons — called at ${fmtUsd(rec.callMcap)}, now ${fmtX(nowX)}, peak ${fmtX(peakX)}. Memecoins rug. Not financial advice.`;
 }
 
@@ -390,7 +390,7 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
   const selectedRec = mint ? bookByMint.get(mint) : undefined;
   const movers = [...pool].filter((token) => token.chgH1 >= 20).sort((a, b) => b.chgH1 - a.chgH1).slice(0, 14);
   const winners = book
-    .map((row) => ({ ...row, peakX: row.callMcap > 0 ? sanePeak(row.callMcap, row.nowMcap, row.peakMcap) / row.callMcap : 1 }))
+    .map((row) => ({ ...row, peakX: row.callMcap > 0 ? sanePeak(row.callMcap, row.nowMcap, row.peakMcap, 0, row.liq) / row.callMcap : 1 }))
     .filter((row) => row.peakX >= 2)
     .sort((a, b) => b.peakX - a.peakX)
     .slice(0, 8);
@@ -867,7 +867,7 @@ function RecordView({ book, shared, onOpen }: { book: CallRec[]; shared: boolean
   const [page, setPage] = useState(0);
   const rows = book
     .map((row) => {
-      const peakMcap = sanePeak(row.callMcap, row.nowMcap, row.peakMcap);
+      const peakMcap = sanePeak(row.callMcap, row.nowMcap, row.peakMcap, 0, row.liq);
       const peakX = row.callMcap > 0 ? peakMcap / row.callMcap : 1;
       const nowX = row.callMcap > 0 ? row.nowMcap / row.callMcap : 1;
       return { ...row, peakX, nowX, paper: paperTrade(row.callMcap, peakMcap, row.nowMcap) };
@@ -1035,7 +1035,7 @@ function TokenView({
   const pairUrl = token?.pairUrl ?? rec?.pairUrl ?? `https://dexscreener.com/solana/${mint}`;
   const liveMcap = token && token.mcap > 0 ? token.mcap : (rec?.nowMcap ?? 0);
   const since = rec && rec.callMcap > 0 ? liveMcap / rec.callMcap : null;
-  const peak = rec && rec.callMcap > 0 ? sanePeak(rec.callMcap, rec.nowMcap, rec.peakMcap, liveMcap) / rec.callMcap : null;
+  const peak = rec && rec.callMcap > 0 ? sanePeak(rec.callMcap, rec.nowMcap, rec.peakMcap, liveMcap, token?.liq || rec.liq) / rec.callMcap : null;
 
   return (
     <section className="flex flex-col gap-4">
@@ -1157,7 +1157,7 @@ function TokenRow({
 }) {
   const liveMcap = token.mcap > 0 ? token.mcap : (rec?.nowMcap ?? 0);
   const since = rec && rec.callMcap > 0 ? liveMcap / rec.callMcap : null;
-  const peak = rec && rec.callMcap > 0 ? sanePeak(rec.callMcap, rec.nowMcap, rec.peakMcap, liveMcap) / rec.callMcap : null;
+  const peak = rec && rec.callMcap > 0 ? sanePeak(rec.callMcap, rec.nowMcap, rec.peakMcap, liveMcap, token.liq || rec.liq) / rec.callMcap : null;
   const reason = rec?.reasons[0] ?? token.reasons[0];
   const calledAgo = rec && now ? fmtAge(now - rec.calledAt) : null;
   return (

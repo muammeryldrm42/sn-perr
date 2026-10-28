@@ -22,11 +22,21 @@ export interface CallRec {
   boosts: number;
 }
 
-export function sanePeak(callMcap: number, nowMcap: number, peakMcap: number, liveMcap = 0): number {
+export function sanePeak(callMcap: number, nowMcap: number, peakMcap: number, liveMcap = 0, liq = 0): number {
   const now = liveMcap > 0 ? liveMcap : nowMcap;
-  const stored = Math.max(peakMcap, now, callMcap);
-  if (now > 0 && stored > now * 80 && stored > Math.max(callMcap, 1) * 30) return Math.max(callMcap, now);
-  return stored;
+  let peak = Math.max(peakMcap, now, callMcap);
+  const anchor = Math.max(now, callMcap);
+  if (liq > 500 && peak > liq * 60) peak = anchor;
+  if (anchor > 0 && peak > anchor * 40) peak = anchor;
+  return peak;
+}
+
+export function nextPeak(callMcap: number, prevNow: number, prevPeak: number, nextMcap: number, liq = 0): number {
+  if (!(nextMcap > 0)) return sanePeak(callMcap, prevNow, prevPeak, 0, liq);
+  const anchor = Math.max(prevNow, callMcap);
+  const spike = (anchor > 0 && nextMcap > anchor * 40) || (liq > 500 && nextMcap > liq * 60);
+  const peak = spike ? prevPeak : Math.max(prevPeak, nextMcap);
+  return sanePeak(callMcap, nextMcap, peak, nextMcap, liq);
 }
 
 const BOOK_KEY = "talons.book.v1";
@@ -101,10 +111,14 @@ export function mergeBook(tokens: { mint: string; symbol: string; name: string; 
     const existing = map.get(token.mint);
     if (!token.called || !token.path) {
       if (existing) {
-        existing.nowMcap = token.mcap;
-        existing.peakMcap = Math.max(existing.peakMcap, token.mcap);
+        if (token.mcap > 0) {
+          const anchor = Math.max(existing.nowMcap, existing.callMcap);
+          const spike = (anchor > 0 && token.mcap > anchor * 40) || (token.liq > 500 && token.mcap > token.liq * 60);
+          existing.peakMcap = nextPeak(existing.callMcap, existing.nowMcap, existing.peakMcap, token.mcap, token.liq || existing.liq);
+          if (!spike) existing.nowMcap = token.mcap;
+        }
         existing.chgH1 = token.chgH1;
-        existing.liq = token.liq;
+        existing.liq = token.liq || existing.liq;
         existing.image = token.image ?? existing.image;
       }
       continue;
@@ -132,8 +146,10 @@ export function mergeBook(tokens: { mint: string; symbol: string; name: string; 
         boosts: token.boosts,
       });
     } else {
-      existing.nowMcap = token.mcap;
-      existing.peakMcap = Math.max(existing.peakMcap, token.mcap);
+      const anchor = Math.max(existing.nowMcap, existing.callMcap);
+      const spike = (anchor > 0 && token.mcap > anchor * 40) || ((token.liq || existing.liq) > 500 && token.mcap > (token.liq || existing.liq) * 60);
+      existing.peakMcap = nextPeak(existing.callMcap, existing.nowMcap, existing.peakMcap, token.mcap, token.liq || existing.liq);
+      if (!spike) existing.nowMcap = token.mcap;
       existing.score = token.score;
       existing.chgH1 = token.chgH1;
       existing.liq = token.liq;
