@@ -226,10 +226,13 @@ async function pairsFor(mints: string[]): Promise<{ pairs: DexPair[]; ok: boolea
 }
 
 function rank(tokens: Scored[]): Scored[] {
-  const called = tokens.filter((token) => token.called).sort((a, b) => b.score - a.score);
-  const fresh = called.filter((token) => token.path === "fresh").slice(0, 4);
-  const rest = called.filter((token) => token.path !== "fresh");
-  const kept = new Set([...fresh, ...rest].slice(0, 12).map((token) => token.mint));
+  const kept = new Set(
+    tokens
+      .filter((token) => token.called)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 6)
+      .map((token) => token.mint),
+  );
   return tokens
     .map((token) => {
       if (!token.called || kept.has(token.mint)) return token;
@@ -238,7 +241,7 @@ function rank(tokens: Scored[]): Scored[] {
         called: false,
         path: null,
         tier: null,
-        blockers: ["Held — a stronger signal is ahead this pass"],
+        blockers: ["Held — only a few early names with room get a call"],
       };
     })
     .sort((a, b) => Number(b.called) - Number(a.called) || b.score - a.score || b.volH1 - a.volH1)
@@ -256,13 +259,51 @@ export async function buildScan(): Promise<ScanResult> {
   return value;
 }
 
+async function pumpClimbers(now: number): Promise<string[]> {
+  const pages = await Promise.all(
+    [160, 420, 800].map((offset) =>
+      getJson(
+        `https://frontend-api-v3.pump.fun/coins?offset=${offset}&limit=40&sort=created_timestamp&order=DESC&includeNsfw=false`,
+      ),
+    ),
+  );
+  const picks: { mint: string; mcap: number }[] = [];
+  const seen = new Set<string>();
+  for (const page of pages) {
+    for (const row of asArray(page)) {
+      if (!row || typeof row !== "object") continue;
+      const coin = row as {
+        mint?: string;
+        created_timestamp?: number;
+        usd_market_cap?: number;
+        nsfw?: boolean;
+        is_banned?: boolean;
+        hidden?: boolean;
+      };
+      const mint = coin.mint;
+      if (!mint || seen.has(mint) || IGNORE.has(mint) || coin.nsfw || coin.is_banned || coin.hidden) continue;
+      const age = coin.created_timestamp ? (now - coin.created_timestamp) / 60_000 : 9_999;
+      const mcap = num(coin.usd_market_cap);
+      if (age < 4 || age > 70 || mcap < 12_000 || mcap > 80_000) continue;
+      seen.add(mint);
+      picks.push({ mint, mcap });
+    }
+  }
+  return picks
+    .sort((a, b) => b.mcap - a.mcap)
+    .slice(0, 12)
+    .map((row) => row.mint);
+}
+
 async function scanFresh(): Promise<ScanResult> {
-  const [boostsTop, boostsLatest, profiles, trending, freshPools] = await Promise.all([
+  const now = Date.now();
+  const [boostsTop, boostsLatest, profiles, trending, freshPools, curve] = await Promise.all([
     getJson("https://api.dexscreener.com/token-boosts/top/v1"),
     getJson("https://api.dexscreener.com/token-boosts/latest/v1"),
     getJson("https://api.dexscreener.com/token-profiles/latest/v1"),
     getJson("https://api.geckoterminal.com/api/v2/networks/solana/trending_pools?page=1"),
     getJson("https://api.geckoterminal.com/api/v2/networks/solana/new_pools?page=1"),
+    pumpClimbers(now),
   ]);
 
   const meta = new Map<string, Meta>();
@@ -273,11 +314,7 @@ async function scanFresh(): Promise<ScanResult> {
   const trendMints = geckoMints(trending);
   const newMints = geckoMints(freshPools);
 
-  const ordered = [
-    ...trendMints,
-    ...[...meta.keys()],
-    ...newMints.slice(0, 20),
-  ];
+  const ordered = [...curve, ...newMints.slice(0, 16), ...trendMints.slice(0, 12), ...[...meta.keys()].slice(0, 8)];
   const seen = new Set<string>();
   const mints: string[] = [];
   for (const mint of ordered) {
@@ -289,7 +326,6 @@ async function scanFresh(): Promise<ScanResult> {
 
   const { pairs, ok: dexOk } = await pairsFor(mints);
   const best = pickPairs(pairs);
-  const now = Date.now();
   const tokens = rank(
     [...best.values()]
       .map((pair) => {
@@ -304,6 +340,7 @@ async function scanFresh(): Promise<ScanResult> {
     { id: "profiles", label: "Dex profiles", ok: Boolean(profiles), count: profileCount },
     { id: "trending", label: "Trending pools", ok: Boolean(trending), count: trendMints.length },
     { id: "new", label: "New pools", ok: Boolean(freshPools), count: newMints.length },
+    { id: "curve", label: "Curve climbers", ok: curve.length > 0, count: curve.length },
     { id: "pairs", label: "Pair quotes", ok: dexOk, count: tokens.length },
   ];
 

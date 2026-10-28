@@ -632,7 +632,7 @@ function CallsView({
         <p className="font-mono text-xs tracking-widest text-dim uppercase">Solana calls</p>
         <h1 className="text-2xl font-semibold tracking-tight">Only the ones that prove it</h1>
         <p className="mt-1 hidden max-w-2xl text-sm text-muted sm:block">
-          Boosts, new pools, and trending Solana pairs. A call needs a run, a live pool, paid attention, or a fresh move — plus health checks.
+          New Solana coins that already left the open and are still small enough to run. Dead launches and paid boosts stay off the board.
         </p>
       </div>
       <div className="grid grid-cols-3 gap-2">
@@ -910,12 +910,12 @@ function MethodView({ sources }: { sources: ScanResult["sources"] }) {
           </div>
         ))}
       </div>
-      <Rule title="Runner" body="Still bidding. Market cap $12K–$8M, the hour or the last 5 minutes is up, buys lead sells, and liquidity is at least 4% of the cap. A move that already ran and stalled is not a call." />
-      <Rule title="Graduated" body="Off the pump curve, at least 8 minutes old, under a day and a half, with hourly volume and the 5-minute window not red." />
-      <Rule title="Boosted" body="Real DexScreener boosts only count if price is moving with them. A paid profile with no bid is not a signal." />
-      <Rule title="Fresh" body="Risky. Three to 75 minutes old, $6K–$150K, and the last 5 minutes are already green with buys ahead of sells." />
-      <Rule title="Health veto" body="No call if it is dumping, the last 5 minutes are rolling over, sells overwhelm buys, liquidity is thin, or the move already happened." />
-      <Rule title="How many" body="Each pass keeps the strongest 12. Up to 4 of those slots stay open for fresh launches, so a paid coin cannot fill the whole board." />
+      <Rule title="Runner" body="Still early. Under about $400K, the last 5 minutes are still green, and buys are ahead of sells." />
+      <Rule title="Graduated" body="Just off the curve, under 8 hours old, under about $350K, and the 5-minute window is not red." />
+      <Rule title="Boosted" body="A paid DexScreener profile is not a call. Boosts can show up on the radar, but they do not clear the gate by themselves." />
+      <Rule title="Fresh" body="Four to 70 minutes old, $12K–$80K. It has to have lifted off the open and still be getting more buys than sells. A brand new $3K mint is not a signal." />
+      <Rule title="Health veto" body="No call if the last 5 minutes are selling, liquidity is thin, or the move already left the early range." />
+      <Rule title="How many" body="Each pass keeps at most 6. The rest stay on the radar. A long list would just be noise." />
       <Rule
         title="Tiers"
         body="Fresh launches are Risky. Conservative needs thicker liquidity, a calmer hour, a social or boosts, and buys ahead of sells. Everything else that passes is Balanced."
