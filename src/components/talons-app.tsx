@@ -796,6 +796,7 @@ function WatchView({
 }
 
 function RecordView({ book, now, shared, onOpen }: { book: CallRec[]; now: number | null; shared: boolean; onOpen: (mint: string) => void }) {
+  const [showTop, setShowTop] = useState(false);
   const rows = book
     .map((row) => {
       const peakX = row.callMcap > 0 ? row.peakMcap / row.callMcap : 1;
@@ -853,6 +854,43 @@ function RecordView({ book, now, shared, onOpen }: { book: CallRec[]; now: numbe
       )}
       {best && <p className="text-sm text-muted">Best call {best.symbol} peaked at {fmtX(best.peakX)}.</p>}
       <p className="text-sm text-muted">Average paper multiple {rows.length ? fmtX(avgPaper) : "—"}.</p>
+      {rows.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowTop((open) => !open)}
+          className="inline-flex h-11 items-center self-start rounded-lg bg-flow px-4 text-sm font-medium text-bg"
+        >
+          {showTop ? "Hide top X" : "Top X"}
+        </button>
+      )}
+      {showTop && (
+        <div className="flex flex-col gap-2">
+          <p className="font-mono text-xs tracking-widest text-dim uppercase">Biggest multiples</p>
+          {rows.filter((row) => row.peakX > 1).length === 0 ? (
+            <Empty title="No multiple yet" body="A call has to run above its entry before it shows here." />
+          ) : (
+            rows
+              .filter((row) => row.peakX > 1)
+              .slice(0, 20)
+              .map((row, index) => (
+                <button
+                  key={row.mint}
+                  type="button"
+                  onClick={() => onOpen(row.mint)}
+                  className="flex items-center gap-3 rounded-lg border border-gold/30 bg-panel p-3 text-left"
+                >
+                  <span className="w-6 font-mono text-sm text-dim">{index + 1}</span>
+                  <TokenMark token={row} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-mono font-semibold">{row.symbol}</span>
+                    <span className="block text-xs text-dim">Called at {fmtUsd(row.callMcap)}</span>
+                  </span>
+                  <span className="font-mono text-xl text-gold">{fmtX(row.peakX)}</span>
+                </button>
+              ))
+          )}
+        </div>
+      )}
       {rows.length === 0 ? (
         <Empty title="The book is empty" body="Calls land here the moment the gate passes. Leave the terminal open and the peaks update every scan." />
       ) : (
