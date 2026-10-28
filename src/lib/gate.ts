@@ -72,6 +72,8 @@ export interface Candle {
   c: number;
 }
 
+const PUMP_CURVE = new Set(["pumpfun"]);
+
 export function scoreToken(t: MarketToken, now = Date.now()): Scored {
   const ageMin = t.createdAt > 0 ? (now - t.createdAt) / 60_000 : 9_999;
   const liqRatio = t.mcap > 0 ? t.liq / t.mcap : 0;
@@ -82,6 +84,7 @@ export function scoreToken(t: MarketToken, now = Date.now()): Scored {
   const sellHeavy = t.sellsH1 > t.buysH1 * 1.8 && t.buysH1 + t.sellsH1 > 24;
   const thin = t.liq < 3_000 || (t.mcap > 40_000 && liqRatio < 0.025);
   const sizeOk = t.mcap >= 5_000 && t.mcap <= 40_000_000;
+  const health = !dumping && !sellHeavy && !thin && sizeOk && !rollingOver && !chased;
   const m5Buys = t.buysM5 >= t.sellsM5;
 
   const fresh =
@@ -96,8 +99,68 @@ export function scoreToken(t: MarketToken, now = Date.now()): Scored {
     !rollingOver &&
     !chased;
 
+  const runner =
+    ageMin <= 60 * 24 &&
+    t.mcap >= 15_000 &&
+    t.mcap <= 1_500_000 &&
+    (t.chgM5 >= 4 || (t.chgH1 >= 15 && t.chgM5 >= 0)) &&
+    (t.volH1 >= 6_000 || t.volM5 >= 2_000) &&
+    buyRatio >= 1.05 &&
+    m5Buys &&
+    t.liq >= 6_000 &&
+    liqRatio >= 0.035 &&
+    !rollingOver &&
+    !chased;
+
+  const graduated =
+    !PUMP_CURVE.has(t.dex) &&
+    ageMin >= 8 &&
+    ageMin <= 60 * 24 &&
+    t.mcap >= 25_000 &&
+    t.mcap <= 1_200_000 &&
+    t.volH1 >= 6_000 &&
+    t.chgM5 >= 0 &&
+    (t.chgH1 >= 8 || t.chgH6 >= 20) &&
+    buyRatio >= 1 &&
+    m5Buys &&
+    t.liq >= 8_000 &&
+    liqRatio >= 0.035 &&
+    !rollingOver &&
+    !chased;
+
+  const boosted =
+    (t.boosts >= 15 || (t.dexPaid && t.boosts >= 5)) &&
+    ageMin <= 60 * 36 &&
+    t.mcap >= 15_000 &&
+    t.mcap <= 1_000_000 &&
+    (t.chgM5 >= 4 || (t.chgH1 >= 12 && t.chgM5 >= 0)) &&
+    (t.volH1 >= 5_000 || t.volM5 >= 1_200) &&
+    buyRatio >= 1 &&
+    m5Buys &&
+    t.liq >= 6_000 &&
+    !rollingOver &&
+    !chased &&
+    !dumping;
+
+  const reclaim =
+    ageMin >= 12 &&
+    ageMin <= 60 * 36 &&
+    t.mcap >= 20_000 &&
+    t.mcap <= 800_000 &&
+    t.chgH1 <= -6 &&
+    t.chgH1 > -40 &&
+    t.chgM5 >= 10 &&
+    t.buysM5 >= Math.max(1, t.sellsM5) * 1.1 &&
+    t.volM5 >= 1_500 &&
+    t.liq >= 6_000 &&
+    liqRatio >= 0.03;
+
   let path: Proof | null = null;
   if (fresh && !dumping && !sellHeavy && t.chgH1 > -8) path = "fresh";
+  else if (health && runner) path = "runner";
+  else if (health && graduated) path = "graduated";
+  else if (reclaim && !thin) path = "reclaim";
+  else if (health && boosted) path = "boosted";
 
   let plus = 0;
   let pen = 0;
@@ -153,6 +216,10 @@ export function scoreToken(t: MarketToken, now = Date.now()): Scored {
 
   const reasons: string[] = [];
   if (path === "fresh") reasons.push("New launch, and the last minutes are already bidding");
+  if (path === "runner") reasons.push("Still running, and the bid is alive");
+  if (path === "graduated") reasons.push("Off the curve, still small, still being bought");
+  if (path === "boosted") reasons.push("Paid attention, and the price is bidding with it");
+  if (path === "reclaim") reasons.push("The hour was red and the last 5 minutes turned");
   if (t.chgM5 >= 8) reasons.push(`Up ${Math.round(t.chgM5)}% in the last 5 minutes`);
   if (buyRatio >= 1.25) reasons.push("More buys than sells this hour");
   if (t.mcap >= 12_000 && t.mcap <= 80_000) reasons.push("Still small enough to have room");
@@ -167,8 +234,7 @@ export function scoreToken(t: MarketToken, now = Date.now()): Scored {
     if (chased) blockers.push("The move already happened");
     if (sellHeavy) blockers.push("Sells are overwhelming buys");
     if (thin) blockers.push("Liquidity is too thin");
-    if (ageMin > 70) blockers.push("Not a new launch");
-    if (blockers.length === 0) blockers.push("Too new to prove a bid, or it never left the open");
+    if (blockers.length === 0) blockers.push("No live bid yet");
   }
 
   return { ...t, score, called: path !== null, path, tier, reasons, blockers, checks };
