@@ -230,7 +230,7 @@ function rank(tokens: Scored[]): Scored[] {
     tokens
       .filter((token) => token.called)
       .sort((a, b) => b.score - a.score)
-      .slice(0, 6)
+      .slice(0, 10)
       .map((token) => token.mint),
   );
   return tokens

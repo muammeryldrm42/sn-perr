@@ -25,7 +25,7 @@ interface CallRow {
 }
 
 function asPath(value: string): Proof {
-  if (value === "runner" || value === "graduated" || value === "boosted" || value === "fresh") return value;
+  if (value === "runner" || value === "graduated" || value === "boosted" || value === "fresh" || value === "reclaim") return value;
   return "fresh";
 }
 

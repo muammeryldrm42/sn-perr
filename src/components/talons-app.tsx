@@ -56,6 +56,7 @@ function pathLabel(path: Proof | null): string {
   if (path === "graduated") return "Graduated";
   if (path === "boosted") return "Boosted";
   if (path === "fresh") return "Fresh";
+  if (path === "reclaim") return "Reclaim";
   return "Radar";
 }
 
@@ -63,7 +64,47 @@ function pathClass(path: Proof | null): string {
   if (path === "fresh") return "text-warn";
   if (path === "runner") return "text-flow";
   if (path === "boosted") return "text-gold";
+  if (path === "reclaim") return "text-gold";
   return "text-steel";
+}
+
+function bookToken(rec: CallRec): Scored {
+  return {
+    mint: rec.mint,
+    name: rec.name,
+    symbol: rec.symbol,
+    image: rec.image,
+    dex: rec.dex,
+    pairUrl: rec.pairUrl,
+    mcap: rec.nowMcap,
+    fdv: rec.nowMcap,
+    liq: rec.liq,
+    priceUsd: 0,
+    volM5: 0,
+    volH1: 0,
+    volH24: 0,
+    chgM5: 0,
+    chgH1: rec.chgH1,
+    chgH6: 0,
+    chgH24: 0,
+    buysM5: 0,
+    sellsM5: 0,
+    buysH1: 0,
+    sellsH1: 0,
+    createdAt: rec.calledAt,
+    boosts: rec.boosts,
+    dexPaid: false,
+    twitter: rec.twitter,
+    website: rec.website,
+    telegram: rec.telegram,
+    score: rec.score,
+    called: true,
+    path: rec.path,
+    tier: rec.path === "fresh" ? "risky" : "balanced",
+    reasons: rec.reasons,
+    blockers: [],
+    checks: [],
+  };
 }
 
 function Logo({ compact = false }: { compact?: boolean }) {
@@ -320,15 +361,31 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
       token.name.toLowerCase().includes(q) ||
       token.mint.toLowerCase().includes(q),
   );
-  const calls = matched.filter((token) => token.called && (tier === "all" || token.tier === tier));
+  const board = new Map<string, Scored>();
+  const cooling = new Set<string>();
+  for (const token of matched) {
+    if (token.called) board.set(token.mint, token);
+  }
+  if (now) {
+    for (const rec of book) {
+      if (board.has(rec.mint) || now - rec.calledAt > 8 * 60 * 60 * 1000) continue;
+      const live = pool.find((token) => token.mint === rec.mint);
+      const row = live ?? bookToken(rec);
+      if (q && !`${row.symbol} ${row.name} ${row.mint}`.toLowerCase().includes(q)) continue;
+      board.set(rec.mint, { ...row, called: true, path: rec.path, tier: row.tier ?? (rec.path === "fresh" ? "risky" : "balanced") });
+      cooling.add(rec.mint);
+    }
+  }
+  const calls = [...board.values()].filter((token) => tier === "all" || token.tier === tier);
   const sortedCalls = [...calls].sort((a, b) => {
     if (sort === "h1") return b.chgH1 - a.chgH1;
     if (sort === "mcap") return b.mcap - a.mcap;
     if (sort === "since") return multiple(bookByMint.get(b.mint)) - multiple(bookByMint.get(a.mint));
-    if (sort === "new") return (bookByMint.get(b.mint)?.calledAt ?? 0) - (bookByMint.get(a.mint)?.calledAt ?? 0);
-    return b.score - a.score;
+    if (sort === "new") return (bookByMint.get(b.mint)?.calledAt ?? b.createdAt) - (bookByMint.get(a.mint)?.calledAt ?? a.createdAt);
+    const cool = Number(cooling.has(a.mint)) - Number(cooling.has(b.mint));
+    return cool || b.score - a.score;
   });
-  const radar = matched.filter((token) => !token.called).sort((a, b) => b.score - a.score);
+  const radar = matched.filter((token) => !token.called && !board.has(token.mint)).sort((a, b) => b.score - a.score);
   const watched = watch
     .map((item) => pool.find((token) => token.mint === item) ?? null)
     .filter((token): token is Scored => token !== null);
@@ -479,6 +536,7 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
           {view === "calls" && (
             <CallsView
               calls={sortedCalls}
+              cooling={cooling}
               winners={winners}
               radarCount={radar.length}
               bookCount={book.length}
@@ -487,10 +545,10 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
               sort={sort}
               setSort={setSort}
               counts={{
-                all: matched.filter((token) => token.called).length,
-                conservative: matched.filter((token) => token.tier === "conservative").length,
-                balanced: matched.filter((token) => token.tier === "balanced").length,
-                risky: matched.filter((token) => token.tier === "risky").length,
+                all: board.size,
+                conservative: [...board.values()].filter((token) => token.tier === "conservative").length,
+                balanced: [...board.values()].filter((token) => token.tier === "balanced").length,
+                risky: [...board.values()].filter((token) => token.tier === "risky").length,
               }}
               bookByMint={bookByMint}
               watch={watch}
@@ -585,6 +643,7 @@ function NavButton({
 
 function CallsView({
   calls,
+  cooling,
   winners,
   radarCount,
   bookCount,
@@ -606,6 +665,7 @@ function CallsView({
   onSearch,
 }: {
   calls: Scored[];
+  cooling: Set<string>;
   winners: (CallRec & { peakX: number })[];
   radarCount: number;
   bookCount: number;
@@ -632,7 +692,7 @@ function CallsView({
         <p className="font-mono text-xs tracking-widest text-dim uppercase">Solana calls</p>
         <h1 className="text-2xl font-semibold tracking-tight">Only the ones that prove it</h1>
         <p className="mt-1 hidden max-w-2xl text-sm text-muted sm:block">
-          New Solana coins that already left the open and are still small enough to run. Dead launches and paid boosts stay off the board.
+          New coins, runners, graduations, confirmed boosts, and reclaims. A call stays on this board for 8 hours. Cooling means the live gate let go. The call did not.
         </p>
       </div>
       <div className="grid grid-cols-3 gap-2">
@@ -717,6 +777,7 @@ function CallsView({
               now={now}
               onOpen={onOpen}
               onWatch={onWatch}
+              note={cooling.has(token.mint) ? "Cooling" : undefined}
             />
           ))}
         </div>
@@ -910,12 +971,12 @@ function MethodView({ sources }: { sources: ScanResult["sources"] }) {
           </div>
         ))}
       </div>
-      <Rule title="Runner" body="Still early. Under about $400K, the last 5 minutes are still green, and buys are ahead of sells." />
-      <Rule title="Graduated" body="Just off the curve, under 8 hours old, under about $350K, and the 5-minute window is not red." />
-      <Rule title="Boosted" body="A paid DexScreener profile is not a call. Boosts can show up on the radar, but they do not clear the gate by themselves." />
-      <Rule title="Fresh" body="Four to 70 minutes old, $12K–$80K. It has to have lifted off the open and still be getting more buys than sells. A brand new $3K mint is not a signal." />
-      <Rule title="Health veto" body="No call if the last 5 minutes are selling, liquidity is thin, or the move already left the early range." />
-      <Rule title="How many" body="Each pass keeps at most 6. The rest stay on the radar. A long list would just be noise." />
+      <Rule title="Runner" body="Still able to multiply. Up to about $1.5M, the last 5 minutes are not dead, and buys lead sells." />
+      <Rule title="Graduated" body="Off the curve within a day, under about $1.2M, and the 5-minute window is not red." />
+      <Rule title="Boosted" body="A paid profile only counts when price is bidding with it. The boost alone is not a call." />
+      <Rule title="Fresh" body="Four to 70 minutes old, $12K–$80K, already off the open, buys ahead of sells." />
+      <Rule title="Reclaim" body="The hour is red, but the last 5 minutes flipped green with buys in control. Not a freefall." />
+      <Rule title="How many" body="Each pass adds at most 10 live names. Anything already called stays on the board for 8 hours, marked Cooling if the gate lets go." />
       <Rule
         title="Tiers"
         body="Fresh launches are Risky. Conservative needs thicker liquidity, a calmer hour, a social or boosts, and buys ahead of sells. Everything else that passes is Balanced."
