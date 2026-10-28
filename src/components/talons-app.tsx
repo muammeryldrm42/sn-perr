@@ -416,7 +416,9 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
         </nav>
         <div className="border-t border-line p-4">
           <p className="font-mono text-xs tracking-widest text-flow uppercase">Free for everyone</p>
-          <p className="mt-2 text-sm text-muted">Same calls, no pack, nothing deleted from this browser's book.</p>
+          <p className="mt-2 text-sm text-muted">
+            {shared ? "One call book for every visitor. Stars stay on this browser." : "Calls are saved in this browser until Postgres is connected."}
+          </p>
         </div>
       </aside>
 
@@ -705,7 +707,7 @@ function CallsView({
       <div className="grid grid-cols-3 gap-2">
         <Stat label="Live calls" value={String(counts.all)} />
         <Stat label="On radar" value={String(radarCount)} />
-        <Stat label="Your book" value={String(bookCount)} />
+        <Stat label={shared ? "Shared book" : "This browser"} value={String(bookCount)} />
       </div>
       {showNotice && (
         <div className="flex items-start justify-between gap-3 rounded-lg border border-gold/30 bg-panel p-3">
