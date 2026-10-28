@@ -79,7 +79,7 @@ async function geckoJson(url: string): Promise<unknown | null> {
 
 async function getJson(url: string, extra?: Record<string, string>): Promise<unknown | null> {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 9000);
+  const timer = setTimeout(() => ctrl.abort(), 6000);
   try {
     const res = await fetch(url, {
       signal: ctrl.signal,
@@ -242,10 +242,12 @@ function median(values: number[]): number | null {
 }
 
 async function pairsFor(mints: string[]): Promise<{ pairs: DexPair[]; ok: boolean }> {
+  const groups = await Promise.all(
+    chunks(mints, 30).map((group) => getJson(`https://api.dexscreener.com/latest/dex/tokens/${group.join(",")}`)),
+  );
   const pairs: DexPair[] = [];
   let ok = false;
-  for (const group of chunks(mints, 30)) {
-    const payload = await getJson(`https://api.dexscreener.com/latest/dex/tokens/${group.join(",")}`);
+  for (const payload of groups) {
     const list = asArray((payload as { pairs?: unknown } | null)?.pairs) as DexPair[];
     if (payload) ok = true;
     pairs.push(...list);

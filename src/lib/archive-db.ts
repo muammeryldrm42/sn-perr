@@ -63,14 +63,25 @@ function toRec(row: CallRow): CallRec {
   };
 }
 
+async function eachLimited<T>(items: T[], limit: number, run: (item: T) => Promise<void>) {
+  let index = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (index < items.length) {
+      const item = items[index];
+      index += 1;
+      await run(item);
+    }
+  });
+  await Promise.all(workers);
+}
+
 /** Persist calls only when a real Postgres URL is configured. Otherwise the browser keeps its own book. */
 export async function syncSharedBook(tokens: Scored[]): Promise<{ shared: boolean; book: CallRec[] }> {
   if (dbSource !== "neon") return { shared: false, book: [] };
   try {
     const sql = await getSql();
     const now = Date.now();
-    for (const token of tokens) {
-      if (!(token.mcap > 0)) continue;
+    await eachLimited(tokens.filter((token) => token.mcap > 0), 8, async (token) => {
       if (token.called && token.path) {
         await sql`
           insert into calls (
@@ -132,16 +143,18 @@ export async function syncSharedBook(tokens: Scored[]): Promise<{ shared: boolea
           where mint = ${token.mint}
         `;
       }
-    }
+    });
     const known = new Set(tokens.map((token) => token.mint));
     const open = await sql<{ mint: string }>`select mint from calls order by called_at desc limit 60`;
     const missing = open.map((row) => row.mint).filter((mint) => !known.has(mint));
     if (missing.length) {
       const { quotesFor } = await import("./scan-core");
       const quotes = await quotesFor(missing);
-      for (const quote of quotes) {
-        if (!(quote.mcap > 0)) continue;
-        await sql`
+      await eachLimited(
+        quotes.filter((quote) => quote.mcap > 0),
+        8,
+        async (quote) => {
+          await sql`
           update calls set
             now_mcap = case
               when ${quote.mcap} <= greatest(now_mcap, call_mcap) * 40
@@ -159,7 +172,8 @@ export async function syncSharedBook(tokens: Scored[]): Promise<{ shared: boolea
             liq = ${quote.liq}
           where mint = ${quote.mint}
         `;
-      }
+        },
+      );
     }
     await sql`
       update calls

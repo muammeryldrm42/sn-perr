@@ -34,6 +34,8 @@ export function TokenChart({
   const pair = pairOf(pairUrl);
   const drawn = useRef<1 | 5 | 15>(5);
   const closeChart = useRef(() => {});
+  const live = useRef({ priceUsd, mcap, callMcap, calledAt });
+  live.current = { priceUsd, mcap, callMcap, calledAt };
 
   useEffect(() => {
     const id = window.setInterval(() => setBeat((value) => value + 1), 45_000);
@@ -68,8 +70,9 @@ export function TokenChart({
       if (dead || !host.current) return;
       closeChart.current();
 
+      const { priceUsd: livePrice, mcap: liveMcap, callMcap: liveCall, calledAt: liveAt } = live.current;
       const lastClose = rows[rows.length - 1]?.c ?? 0;
-      const scale = lastClose > 0 && mcap > 0 ? mcap / lastClose : priceUsd > 0 && mcap > 0 ? mcap / priceUsd : 1;
+      const scale = lastClose > 0 && liveMcap > 0 ? liveMcap / lastClose : livePrice > 0 && liveMcap > 0 ? liveMcap / livePrice : 1;
       const seen = new Set<number>();
       const bars: { time: number; open: number; high: number; low: number; close: number }[] = [];
       for (const candle of rows) {
@@ -138,20 +141,20 @@ export function TokenChart({
         },
         autoscaleInfoProvider: ((base) => {
           const info = base();
-          if (!info?.priceRange || !(callMcap && callMcap > 0)) return info;
+          if (!info?.priceRange || !(liveCall && liveCall > 0)) return info;
           return {
             priceRange: {
-              minValue: Math.min(info.priceRange.minValue, callMcap * 0.92),
-              maxValue: Math.max(info.priceRange.maxValue, callMcap * 1.04),
+              minValue: Math.min(info.priceRange.minValue, liveCall * 0.92),
+              maxValue: Math.max(info.priceRange.maxValue, liveCall * 1.04),
             },
           };
         }) satisfies AutoscaleInfoProvider,
       });
       series.setData(bars.map((bar) => ({ ...bar, time: bar.time as never })));
 
-      if (callMcap && callMcap > 0) {
+      if (liveCall && liveCall > 0) {
         series.createPriceLine({
-          price: callMcap,
+          price: liveCall,
           color: "#ef5350",
           lineWidth: 1,
           lineStyle: 1,
@@ -159,8 +162,8 @@ export function TokenChart({
           title: "",
         });
         let nearest = bars[0].time;
-        if (calledAt && calledAt > 0) {
-          const target = calledAt / 1000;
+        if (liveAt && liveAt > 0) {
+          const target = liveAt / 1000;
           let best = Infinity;
           for (const bar of bars) {
             const dist = Math.abs(bar.time - target);
@@ -177,7 +180,7 @@ export function TokenChart({
             position: "belowBar",
             color: "#ef5350",
             shape: "arrowUp",
-            text: `Called ${fmtUsd(callMcap)}`,
+            text: `Called ${fmtUsd(liveCall)}`,
           },
         ]);
       }
@@ -192,7 +195,7 @@ export function TokenChart({
     return () => {
       dead = true;
     };
-  }, [mint, span, pair, priceUsd, mcap, callMcap, calledAt, beat]);
+  }, [mint, span, pair, beat]);
 
   useEffect(() => () => closeChart.current(), []);
 

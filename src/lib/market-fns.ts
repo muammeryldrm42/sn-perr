@@ -1,13 +1,38 @@
 import { createServerFn } from "@tanstack/react-start";
+import type { ScanResult } from "@/lib/gate";
 
 const MINT = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
-export const scanMarket = createServerFn({ method: "GET" }).handler(async () => {
+type ReadyScan = ScanResult;
+
+let hot: { at: number; value: ReadyScan } | null = null;
+let pending: Promise<ReadyScan> | null = null;
+
+async function loadScan(): Promise<ReadyScan> {
   const { buildScan } = await import("./scan-core");
   const { syncSharedBook } = await import("./archive-db");
   const scan = await buildScan();
   const shared = await syncSharedBook(scan.tokens);
-  return { ...scan, book: shared.book, shared: shared.shared };
+  const value = { ...scan, book: shared.book, shared: shared.shared };
+  hot = { at: Date.now(), value };
+  return value;
+}
+
+export const scanMarket = createServerFn({ method: "GET" }).handler(async () => {
+  const now = Date.now();
+  if (hot && now - hot.at < 25_000) {
+    if (now - hot.at > 10_000 && !pending) {
+      pending = loadScan().finally(() => {
+        pending = null;
+      });
+    }
+    return hot.value;
+  }
+  if (pending) return pending;
+  pending = loadScan().finally(() => {
+    pending = null;
+  });
+  return pending;
 });
 
 export const searchMarket = createServerFn({ method: "GET" })
