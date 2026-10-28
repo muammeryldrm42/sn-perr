@@ -17,17 +17,21 @@ import type { CallTier, Proof, ScanResult, Scored } from "@/lib/gate";
 import { paperTrade } from "@/lib/gate";
 import { clsxPct, fmtAge, fmtPct, fmtUsd, fmtX, shortMint } from "@/lib/format";
 import { dismissNotice, loadBook, loadSeen, loadWatch, mergeBook, noticeDismissed, sanePeak, saveBook, saveSeen, saveWatch, type CallRec } from "@/lib/book";
-import { scanMarket, searchMarket } from "@/lib/market-fns";
+import { scanMarket, searchMarket, loadRisk } from "@/lib/market-fns";
+import type { RiskRead } from "@/lib/risk";
 import { TokenChart } from "@/components/token-chart";
 
-type View = "calls" | "radar" | "record" | "method" | "lab" | "watch" | "token";
+type View = "calls" | "radar" | "live" | "trending" | "traders" | "record" | "method" | "lab" | "watch" | "token";
 type CallSort = "score" | "h1" | "mcap" | "since" | "new";
 
-const PAGE_VIEWS = new Set<View>(["calls", "radar", "record", "method", "lab", "watch"]);
+const PAGE_VIEWS = new Set<View>(["calls", "radar", "live", "trending", "traders", "record", "method", "lab", "watch"]);
 
 const NAV: { id: Exclude<View, "token">; label: string; icon: typeof Activity }[] = [
   { id: "calls", label: "Calls", icon: Activity },
+  { id: "live", label: "Live", icon: Radio },
+  { id: "trending", label: "Trending", icon: Trophy },
   { id: "radar", label: "Radar", icon: Radio },
+  { id: "traders", label: "Traders", icon: Activity },
   { id: "record", label: "Record", icon: Trophy },
   { id: "method", label: "Method", icon: BookOpen },
 ];
@@ -174,7 +178,7 @@ function shareText(symbol: string, rec?: CallRec): string {
   if (!rec || !(rec.callMcap > 0)) return `${symbol} is on the Talons radar. Memecoins rug. Not financial advice.`;
   const nowX = rec.nowMcap / rec.callMcap;
   const peakX = sanePeak(rec.callMcap, rec.nowMcap, rec.peakMcap, 0, rec.liq) / rec.callMcap;
-  return `${symbol} on Talons — called at ${fmtUsd(rec.callMcap)}, now ${fmtX(nowX)}, peak ${fmtX(peakX)}. Memecoins rug. Not financial advice.`;
+  return `${symbol} on Talons. Called at ${fmtUsd(rec.callMcap)}, now ${fmtX(nowX)}, peak ${fmtX(peakX)}. Memecoins rug. Not financial advice.`;
 }
 
 function openShare(symbol: string, rec?: CallRec) {
@@ -610,6 +614,33 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
           {view === "radar" && (
             <RadarView tokens={radar.slice(0, 30)} watch={watch} now={now} onOpen={openToken} onWatch={toggleWatch} />
           )}
+          {view === "live" && (
+            <FeedView
+              kicker="Just launched"
+              title="Still in the first minutes"
+              body="Newest names from Pump.fun, Bonk, Meteora, and Raydium. A name here is not a call."
+              empty="No launch under 20 minutes in this scan."
+              tokens={[...pool].filter((token) => token.createdAt > 0 && now && now - token.createdAt < 20 * 60_000).sort((a, b) => b.createdAt - a.createdAt).slice(0, 30)}
+              watch={watch}
+              now={now}
+              onOpen={openToken}
+              onWatch={toggleWatch}
+            />
+          )}
+          {view === "trending" && (
+            <FeedView
+              kicker="Trending"
+              title="Where the volume is"
+              body="Highest one-hour volume in this scan. Volume is not a call."
+              empty="The scan has no volume yet."
+              tokens={[...pool].sort((a, b) => b.volH1 - a.volH1).slice(0, 30)}
+              watch={watch}
+              now={now}
+              onOpen={openToken}
+              onWatch={toggleWatch}
+            />
+          )}
+          {view === "traders" && <TradersView />}
           {view === "record" && <RecordView book={book} shared={shared} onOpen={openToken} />}
           {view === "method" && <MethodView sources={sources} onLab={() => go("lab")} />}
           {view === "lab" && <LabView book={book} />}
@@ -640,13 +671,13 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
         </main>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-line bg-panel lg:hidden" aria-label="Mobile">
+      <nav className="fixed inset-x-0 bottom-0 z-30 flex overflow-x-auto border-t border-line bg-panel lg:hidden" aria-label="Mobile">
         {NAV.map((item) => (
           <button
             key={item.id}
             type="button"
             onClick={() => go(item.id)}
-            className={`flex h-16 flex-col items-center justify-center gap-1 text-xs ${view === item.id ? "text-flow" : "text-muted"}`}
+            className={`flex h-16 w-20 shrink-0 flex-col items-center justify-center gap-1 text-xs ${view === item.id ? "text-flow" : "text-muted"}`}
           >
             <item.icon className="size-5" />
             {item.label}
@@ -828,6 +859,91 @@ function CallsView({
         </div>
       )}
     </section>
+  );
+}
+
+function FeedView({
+  kicker,
+  title,
+  body,
+  empty,
+  tokens,
+  watch,
+  now,
+  onOpen,
+  onWatch,
+}: {
+  kicker: string;
+  title: string;
+  body: string;
+  empty: string;
+  tokens: Scored[];
+  watch: string[];
+  now: number | null;
+  onOpen: (mint: string) => void;
+  onWatch: (mint: string) => void;
+}) {
+  return (
+    <section className="flex flex-col gap-4">
+      <div>
+        <p className="font-mono text-xs tracking-widest text-dim uppercase">{kicker}</p>
+        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+        <p className="mt-1 max-w-2xl text-sm text-muted">{body}</p>
+      </div>
+      {tokens.length === 0 ? (
+        <Empty title="Nothing in this pass" body={empty} />
+      ) : (
+        <div className="flex flex-col gap-2">
+          {tokens.map((token) => (
+            <TokenRow key={token.mint} token={token} watched={watch.includes(token.mint)} now={now} onOpen={onOpen} onWatch={onWatch} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function TradersView() {
+  return (
+    <section className="flex max-w-3xl flex-col gap-4">
+      <div>
+        <p className="font-mono text-xs tracking-widest text-dim uppercase">Wallets</p>
+        <h1 className="text-2xl font-semibold tracking-tight">KOL and smart money</h1>
+        <p className="mt-1 text-sm text-muted">
+          A public wallet list did not return rows without an API key. Buys are not counted, and nothing here is invented. Kolscan is free to read in the browser.
+        </p>
+      </div>
+      <a href="https://kolscan.io" target="_blank" rel="noreferrer" className="h-11 self-start rounded-lg border border-line px-3 text-sm leading-[2.75rem] text-muted">
+        Open Kolscan
+      </a>
+    </section>
+  );
+}
+
+function RiskLine({ mint }: { mint: string }) {
+  const [risk, setRisk] = useState<RiskRead | null>(null);
+  useEffect(() => {
+    let dead = false;
+    void loadRisk({ data: { mint } })
+      .then((row) => {
+        if (!dead) setRisk(row);
+      })
+      .catch(() => {
+        if (!dead) setRisk(null);
+      });
+    return () => {
+      dead = true;
+    };
+  }, [mint]);
+  const label = !risk ? "RugCheck" : risk.state === "clean" ? "Clean" : risk.state === "rug" ? "Rug likely" : risk.state === "warn" ? "Warning" : "Checking";
+  const tone = risk?.state === "clean" ? "text-flow" : risk?.state === "rug" ? "text-warn" : "text-gold";
+  return (
+    <p className={`font-mono text-xs ${tone}`}>
+      {label}
+      {risk?.gem ? " · Gem" : ""}
+      {risk?.lpLockedPct != null ? ` · LP lock ${Math.round(risk.lpLockedPct)}%` : ""}
+      {risk?.risks[0] ? ` · ${risk.risks[0]}` : ""}
+    </p>
   );
 }
 
@@ -1040,13 +1156,27 @@ function MethodView({ sources, onLab }: { sources: ScanResult["sources"]; onLab:
       <Rule title="Conservative" body="A balanced call with liquidity at least 8% of market cap, age at least 20 minutes, hour between -5% and +80%, buys at least 1.1x sells. No paid-boost shortcut." />
       <Rule title="Rejected" body="Paid boost with thin volume, a big hourly candle without trades, a dump, a rollover, or a chase. Those stay off the book." />
       <Rule title="Paper trade" body="Buy at the call. Sell half at 2x. If it never hits 2x and trades at 0.6x, cut. After 2x, sell the rest 35% off the high. 2.5% is taken off for costs. This is an estimate from entry, peak, and the latest price." />
-      <Rule title="Not live yet" body="PumpPortal stream, bundle and snipe reads, dev history, RugCheck, and KOL wallets need a chain worker. The lab will not invent those results." />
+      <Rule title="RugCheck" body="Public summary, no key. A danger flag blocks that call. Clean, LP lock at least 90%, and no listed risk is a Gem. Missing reports stay Checking and do not become a pass." />
+      <Rule title="Other pads" body="Bonk, Meteora, Raydium, and LaunchLab pairs under 6 hours are added when the main list is short. Pump.fun is still the early feed." />
+      <Rule title="Not live yet" body="PumpPortal stays open only with a long-lived worker. Wallet bundle, snipe, dev history, and KOL buys need a chain key or a public list that actually returns rows. Those are not faked." />
       <Rule title="Changelog" body="2026-10-28: four lanes, hourly caps, 30% volume floor on balanced, losers stay in the book, lab counts only stored calls." />
       <button type="button" onClick={onLab} className="h-11 self-start rounded-lg border border-line px-3 text-sm text-muted">
         Open the lab
       </button>
     </section>
   );
+}
+
+function band(hits: number, n: number): string {
+  if (n < 1) return "n/a";
+  const z = 1.96;
+  const p = hits / n;
+  const denom = 1 + (z * z) / n;
+  const center = (p + (z * z) / (2 * n)) / denom;
+  const margin = (z * Math.sqrt((p * (1 - p) + (z * z) / (4 * n)) / n)) / denom;
+  const lo = Math.max(0, center - margin);
+  const hi = Math.min(1, center + margin);
+  return `${Math.round(lo * 100)}-${Math.round(hi * 100)}%`;
 }
 
 function LabView({ book }: { book: CallRec[] }) {
@@ -1079,6 +1209,7 @@ function LabView({ book }: { book: CallRec[] }) {
                 <p className="mt-1 font-mono text-sm text-muted">
                   {rows.length} calls
                   {rows.length ? ` · ${Math.round((hit2 / rows.length) * 100)}% hit 2x · ${Math.round((lost / rows.length) * 100)}% at or under 0.2x · paper ${fmtX(paper)}` : " · no calls yet"}
+                  {rows.length ? ` · 2x band ${band(hit2, rows.length)}` : ""}
                 </p>
                 {rows.length > 0 && rows.length < 20 ? <p className="mt-1 text-xs text-dim">Under 20 calls. Do not treat this as a result.</p> : null}
               </article>
@@ -1145,6 +1276,7 @@ function TokenView({
             {token ? ` · ${dexLabel(token.dex)}` : ""}
             {token && now && token.createdAt ? ` · ${fmtAge(now - token.createdAt)} old` : ""}
           </p>
+          {mint ? <RiskLine mint={mint} /> : null}
         </div>
         <button type="button" onClick={onWatch} aria-label={watched ? "Unstar" : "Star"} className="grid size-11 place-items-center rounded-lg border border-line">
           <Star className={`size-4 ${watched ? "fill-gold text-gold" : "text-dim"}`} />

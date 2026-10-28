@@ -13,6 +13,18 @@ async function loadScan(): Promise<ReadyScan> {
   const { syncSharedBook } = await import("./archive-db");
   try {
     const scan = await buildScan();
+    const called = scan.tokens.filter((token) => token.called).slice(0, 2);
+    if (called.length) {
+      const { readRisk } = await import("./risk");
+      for (const token of called) {
+        const risk = await readRisk(token.mint);
+        if (risk.state !== "rug") continue;
+        token.called = false;
+        token.path = null;
+        token.tier = null;
+        token.blockers = ["RugCheck marked a danger", ...token.blockers];
+      }
+    }
     const shared = await syncSharedBook(scan.tokens);
     const value = { ...scan, book: shared.book, shared: shared.shared };
     if (value.tokens.length) hot = { at: Date.now(), value };
@@ -49,6 +61,17 @@ export const searchMarket = createServerFn({ method: "GET" })
   .handler(async ({ data }) => {
     const { buildSearch } = await import("./scan-core");
     return buildSearch(data.q);
+  });
+
+export const loadRisk = createServerFn({ method: "GET" })
+  .validator((input: unknown) => {
+    const mint = typeof input === "object" && input && "mint" in input ? String((input as { mint: unknown }).mint) : "";
+    if (!MINT.test(mint)) throw new Error("Invalid mint");
+    return { mint };
+  })
+  .handler(async ({ data }) => {
+    const { readRisk } = await import("./risk");
+    return readRisk(data.mint);
   });
 
 export const loadCandles = createServerFn({ method: "GET" })

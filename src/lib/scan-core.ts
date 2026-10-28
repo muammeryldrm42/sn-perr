@@ -375,6 +375,29 @@ async function scanFresh(): Promise<ScanResult> {
     if (mints.length >= 60) break;
   }
 
+  if (mints.length < 40) {
+    const extras = await Promise.all(
+      ["bonk", "meteora"].map((q) => getJson(`https://api.dexscreener.com/latest/dex/search?q=${q}`)),
+    );
+    for (const payload of extras) {
+      const found = asArray((payload as { pairs?: unknown } | null)?.pairs) as DexPair[];
+      for (const pair of found) {
+        if (pair.chainId !== "solana") continue;
+        const mint = pair.baseToken?.address;
+        const created = num(pair.pairCreatedAt);
+        const cap = num(pair.marketCap) || num(pair.fdv);
+        if (!mint || seen.has(mint) || IGNORE.has(mint)) continue;
+        const age = created > 0 ? (now - created) / 60_000 : 9_999;
+        const dex = (pair.dexId || "").toLowerCase();
+        const pad = dex.includes("meteora") || dex.includes("bonk") || dex.includes("raydium") || dex.includes("launchlab");
+        if (!pad || age < 2 || age > 360 || cap < 8_000 || cap > 500_000) continue;
+        seen.add(mint);
+        mints.push(mint);
+        if (mints.length >= 60) break;
+      }
+    }
+  }
+
   const { pairs, ok: dexOk } = mints.length ? await pairsFor(mints) : { pairs: [] as DexPair[], ok: false };
   let best = pickPairs(pairs);
   let tokens = rank(
