@@ -207,7 +207,6 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
   const [copied, setCopied] = useState(false);
   const [seenAt, setSeenAt] = useState(0);
   const [alertsOpen, setAlertsOpen] = useState(false);
-  const [alertRows, setAlertRows] = useState<CallRec[]>([]);
   const seenBoot = useRef(false);
   const lookedUp = useRef(new Set<string>());
 
@@ -327,10 +326,8 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
   }
 
   function openAlerts() {
-    const fresh = book.filter((row) => row.calledAt > seenAt).sort((a, b) => b.calledAt - a.calledAt);
-    setAlertRows(fresh);
     setAlertsOpen((open) => !open);
-    if (fresh.length) {
+    if (book.some((row) => row.calledAt > seenAt)) {
       const stamp = Date.now();
       saveSeen(stamp);
       setSeenAt(stamp);
@@ -398,6 +395,7 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
     .sort((a, b) => b.peakX - a.peakX)
     .slice(0, 8);
   const unseen = book.filter((row) => row.calledAt > seenAt).length;
+  const latestAlerts = [...book].sort((a, b) => b.calledAt - a.calledAt).slice(0, 9);
   const age = now ? fmtAge(now - scannedAt) : "now";
   const feedDown = sources.some((source) => source.id === "pairs" && !source.ok);
 
@@ -481,11 +479,11 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
           </div>
           {alertsOpen && (
             <div className="absolute inset-x-3 top-16 z-30 max-h-80 overflow-y-auto rounded-lg border border-line bg-panel p-2 shadow-lg lg:inset-x-auto lg:right-5 lg:w-96">
-              <p className="px-2 py-1 font-mono text-xs tracking-widest text-dim uppercase">New since you last looked</p>
-              {alertRows.length === 0 ? (
-                <p className="px-2 py-3 text-sm text-muted">No new calls.</p>
+              <p className="px-2 py-1 font-mono text-xs tracking-widest text-dim uppercase">Last 9 calls</p>
+              {latestAlerts.length === 0 ? (
+                <p className="px-2 py-3 text-sm text-muted">No calls yet.</p>
               ) : (
-                alertRows.map((row) => (
+                latestAlerts.map((row) => (
                   <button
                     key={row.mint}
                     type="button"
