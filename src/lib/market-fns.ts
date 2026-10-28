@@ -11,11 +11,17 @@ let pending: Promise<ReadyScan> | null = null;
 async function loadScan(): Promise<ReadyScan> {
   const { buildScan } = await import("./scan-core");
   const { syncSharedBook } = await import("./archive-db");
-  const scan = await buildScan();
-  const shared = await syncSharedBook(scan.tokens);
-  const value = { ...scan, book: shared.book, shared: shared.shared };
-  hot = { at: Date.now(), value };
-  return value;
+  try {
+    const scan = await buildScan();
+    const shared = await syncSharedBook(scan.tokens);
+    const value = { ...scan, book: shared.book, shared: shared.shared };
+    if (value.tokens.length) hot = { at: Date.now(), value };
+    else if (hot) return hot.value;
+    return value;
+  } catch {
+    if (hot) return hot.value;
+    throw new Error("scan failed");
+  }
 }
 
 export const scanMarket = createServerFn({ method: "GET" }).handler(async () => {

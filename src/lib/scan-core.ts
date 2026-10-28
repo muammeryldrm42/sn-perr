@@ -369,9 +369,9 @@ async function scanFresh(): Promise<ScanResult> {
     if (mints.length >= 60) break;
   }
 
-  const { pairs, ok: dexOk } = await pairsFor(mints);
-  const best = pickPairs(pairs);
-  const tokens = rank(
+  const { pairs, ok: dexOk } = mints.length ? await pairsFor(mints) : { pairs: [] as DexPair[], ok: false };
+  let best = pickPairs(pairs);
+  let tokens = rank(
     [...best.values()]
       .map((pair) => {
         const token = toToken(pair, meta.get(pair.baseToken?.address ?? ""));
@@ -380,13 +380,33 @@ async function scanFresh(): Promise<ScanResult> {
       .filter((token): token is Scored => token !== null),
   );
 
+  let fallbackOk = false;
+  if (!tokens.length) {
+    const payload = await getJson("https://api.dexscreener.com/latest/dex/search?q=pump");
+    const found = asArray((payload as { pairs?: unknown } | null)?.pairs) as DexPair[];
+    const solana = found.filter((pair) => pair.chainId === "solana");
+    if (solana.length) {
+      best = pickPairs(solana);
+      tokens = rank(
+        [...best.values()]
+          .map((pair) => {
+            const token = toToken(pair, meta.get(pair.baseToken?.address ?? ""));
+            return token ? scoreToken(token, now) : null;
+          })
+          .filter((token): token is Scored => token !== null),
+      );
+      pairs.push(...solana);
+      fallbackOk = tokens.length > 0;
+    }
+  }
+
   const sources: SourceStatus[] = [
     { id: "boosts", label: "Dex boosts", ok: Boolean(boostsTop || boostsLatest), count: boostCount },
     { id: "profiles", label: "Dex profiles", ok: Boolean(profiles), count: profileCount },
     { id: "trending", label: "Trending pools", ok: Boolean(trending), count: trendMints.length },
     { id: "new", label: "New pools", ok: Boolean(freshPools), count: newMints.length },
     { id: "curve", label: "Curve climbers", ok: curve.length > 0, count: curve.length },
-    { id: "pairs", label: "Pair quotes", ok: dexOk, count: tokens.length },
+    { id: "pairs", label: "Pair quotes", ok: dexOk || fallbackOk, count: tokens.length },
   ];
 
   return {

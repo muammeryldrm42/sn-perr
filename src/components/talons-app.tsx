@@ -184,6 +184,7 @@ function multiple(rec?: CallRec): number {
 
 export function TalonsApp({ initial }: { initial: ScanResult }) {
   const [tokens, setTokens] = useState(initial.tokens);
+  const tokensRef = useRef(initial.tokens);
   const [solUsd, setSolUsd] = useState(initial.solUsd);
   const [sources, setSources] = useState(initial.sources);
   const [error, setError] = useState(initial.error);
@@ -297,14 +298,20 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
     setRefreshing(true);
     try {
       const next = await scanMarket();
-      setTokens(next.tokens);
       setSolUsd(next.solUsd);
       setSources(next.sources);
-      setError(next.error);
       setScannedAt(next.scannedAt);
       setShared(next.shared);
       setServerBook(next.book);
       if (next.shared) setBook(next.book);
+      if (next.tokens.length) {
+        setTokens(next.tokens);
+        setError(null);
+      } else if (!tokensRef.current.length) {
+        setError(next.error);
+      } else {
+        setError(null);
+      }
     } catch {
       setError("The scan failed. Retry in a few seconds.");
     } finally {
@@ -356,6 +363,8 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
       return next;
     });
   }
+
+  tokensRef.current = tokens;
 
   const bookByMint = useMemo(() => new Map(book.map((row) => [row.mint, row])), [book]);
   const pool = useMemo(() => {
