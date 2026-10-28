@@ -142,7 +142,7 @@ function TokenMark({ token, size = "size-11" }: { token: { image?: string; symbo
 
 function buyLinks(mint: string, pairUrl: string) {
   const links = [
-    { label: "Jupiter", href: `https://jup.ag/swap/SOL-${mint}` },
+    { label: "Jupiter", href: `https://jup.ag/tokens/${mint}` },
     { label: "BullX", href: `https://bullx.io/terminal?chainId=1399811149&address=${mint}` },
     { label: "GMGN", href: `https://gmgn.ai/sol/token/${mint}` },
     { label: "Axiom", href: `https://axiom.trade/t/${mint}` },
