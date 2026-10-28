@@ -112,6 +112,13 @@ export async function syncSharedBook(tokens: Scored[]): Promise<{ shared: boolea
         `;
       }
     }
+    await sql`
+      update calls
+      set peak_mcap = greatest(call_mcap, now_mcap)
+      where now_mcap > 0
+        and peak_mcap > now_mcap * 80
+        and peak_mcap > call_mcap * 30
+    `;
     const known = new Set(tokens.map((token) => token.mint));
     const open = await sql<{ mint: string }>`select mint from calls order by called_at desc limit 60`;
     const missing = open.map((row) => row.mint).filter((mint) => !known.has(mint));
@@ -141,15 +148,5 @@ export async function syncSharedBook(tokens: Scored[]): Promise<{ shared: boolea
   } catch (error) {
     console.error("[archive] shared book skipped", error instanceof Error ? error.message : "unknown");
     return { shared: false, book: [] };
-  }
-}
-
-export async function liftSharedPeak(mint: string, mcap: number): Promise<void> {
-  if (dbSource !== "neon" || !(mcap > 0)) return;
-  try {
-    const sql = await getSql();
-    await sql`update calls set peak_mcap = greatest(peak_mcap, ${mcap}) where mint = ${mint}`;
-  } catch (error) {
-    console.error("[archive] peak lift skipped", error instanceof Error ? error.message : "unknown");
   }
 }

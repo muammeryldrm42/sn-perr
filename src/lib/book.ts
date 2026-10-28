@@ -22,6 +22,13 @@ export interface CallRec {
   boosts: number;
 }
 
+export function sanePeak(callMcap: number, nowMcap: number, peakMcap: number, liveMcap = 0): number {
+  const now = liveMcap > 0 ? liveMcap : nowMcap;
+  const stored = Math.max(peakMcap, now, callMcap);
+  if (now > 0 && stored > now * 80 && stored > Math.max(callMcap, 1) * 30) return Math.max(callMcap, now);
+  return stored;
+}
+
 const BOOK_KEY = "talons.book.v1";
 const WATCH_KEY = "talons.watch.v1";
 const NOTICE_KEY = "talons.notice.v1";

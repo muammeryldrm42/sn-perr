@@ -10,18 +10,14 @@ export function TokenChart({
   mcap,
   callMcap,
   calledAt,
-  onHigh,
 }: {
   mint: string;
   priceUsd: number;
   mcap: number;
   callMcap?: number;
   calledAt?: number;
-  onHigh?: (high: number) => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
-  const onHighRef = useRef(onHigh);
-  onHighRef.current = onHigh;
   const [span, setSpan] = useState<1 | 5>(1);
   const [status, setStatus] = useState<"loading" | "empty" | "ready">("loading");
 
@@ -50,6 +46,9 @@ export function TokenChart({
 
       const asMcap = priceUsd > 0 && mcap > 0;
       const scale = asMcap ? mcap / priceUsd : 1;
+      const closes = rows.map((candle) => candle.c).filter((price) => price > 0).sort((a, b) => a - b);
+      const mid = closes[Math.floor(closes.length / 2)] || 1;
+      const cap = mid * 40;
       const seen = new Set<number>();
       const bars: { time: number; open: number; high: number; low: number; close: number }[] = [];
       for (const candle of rows) {
@@ -58,10 +57,10 @@ export function TokenChart({
         seen.add(time);
         bars.push({
           time,
-          open: candle.o * scale,
-          high: candle.h * scale,
+          open: Math.min(candle.o, cap) * scale,
+          high: Math.min(Math.max(candle.h, candle.o, candle.c), cap) * scale,
           low: candle.l * scale,
-          close: candle.c * scale,
+          close: Math.min(candle.c, cap) * scale,
         });
       }
       bars.sort((a, b) => a.time - b.time);
@@ -69,7 +68,6 @@ export function TokenChart({
         setStatus("empty");
         return;
       }
-      onHighRef.current?.(Math.max(...bars.map((bar) => bar.high)));
 
       const chart = createChart(host.current, {
         autoSize: true,

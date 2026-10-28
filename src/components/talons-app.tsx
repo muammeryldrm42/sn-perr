@@ -16,8 +16,8 @@ import {
 import type { CallTier, Proof, ScanResult, Scored } from "@/lib/gate";
 import { paperTrade } from "@/lib/gate";
 import { clsxPct, fmtAge, fmtPct, fmtUsd, fmtX, shortMint } from "@/lib/format";
-import { dismissNotice, loadBook, loadSeen, loadWatch, mergeBook, noticeDismissed, saveBook, saveSeen, saveWatch, type CallRec } from "@/lib/book";
-import { liftPeak, scanMarket, searchMarket } from "@/lib/market-fns";
+import { dismissNotice, loadBook, loadSeen, loadWatch, mergeBook, noticeDismissed, sanePeak, saveBook, saveSeen, saveWatch, type CallRec } from "@/lib/book";
+import { scanMarket, searchMarket } from "@/lib/market-fns";
 import { TokenChart } from "@/components/token-chart";
 
 type View = "calls" | "radar" | "record" | "method" | "watch" | "token";
@@ -168,7 +168,7 @@ function writeHash(view: View, mint: string | null) {
 function shareText(symbol: string, rec?: CallRec): string {
   if (!rec || !(rec.callMcap > 0)) return `${symbol} is on the Talons radar. Memecoins rug. Not financial advice.`;
   const nowX = rec.nowMcap / rec.callMcap;
-  const peakX = rec.peakMcap / rec.callMcap;
+  const peakX = sanePeak(rec.callMcap, rec.nowMcap, rec.peakMcap) / rec.callMcap;
   return `${symbol} on Talons — called at ${fmtUsd(rec.callMcap)}, now ${fmtX(nowX)}, peak ${fmtX(peakX)}. Memecoins rug. Not financial advice.`;
 }
 
@@ -312,16 +312,6 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
     }
   }
 
-  function notePeak(nextMint: string, mcap: number) {
-    if (!(mcap > 0)) return;
-    setBook((prev) => {
-      const next = prev.map((row) => (row.mint === nextMint && mcap > row.peakMcap ? { ...row, peakMcap: mcap } : row));
-      if (!shared) saveBook(next);
-      return next;
-    });
-    if (shared) void liftPeak({ data: { mint: nextMint, mcap } });
-  }
-
   function openToken(nextMint: string) {
     setReturnTo(view === "token" ? returnTo : view);
     setMint(nextMint);
@@ -400,7 +390,7 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
   const selectedRec = mint ? bookByMint.get(mint) : undefined;
   const movers = [...pool].filter((token) => token.chgH1 >= 20).sort((a, b) => b.chgH1 - a.chgH1).slice(0, 14);
   const winners = book
-    .map((row) => ({ ...row, peakX: row.callMcap > 0 ? row.peakMcap / row.callMcap : 1 }))
+    .map((row) => ({ ...row, peakX: row.callMcap > 0 ? sanePeak(row.callMcap, row.nowMcap, row.peakMcap) / row.callMcap : 1 }))
     .filter((row) => row.peakX >= 2)
     .sort((a, b) => b.peakX - a.peakX)
     .slice(0, 8);
@@ -610,7 +600,6 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
                   setCopied(false);
                 }
               }}
-              onPeak={notePeak}
             />
           )}
         </main>
@@ -878,9 +867,10 @@ function RecordView({ book, shared, onOpen }: { book: CallRec[]; shared: boolean
   const [page, setPage] = useState(0);
   const rows = book
     .map((row) => {
-      const peakX = row.callMcap > 0 ? row.peakMcap / row.callMcap : 1;
+      const peakMcap = sanePeak(row.callMcap, row.nowMcap, row.peakMcap);
+      const peakX = row.callMcap > 0 ? peakMcap / row.callMcap : 1;
       const nowX = row.callMcap > 0 ? row.nowMcap / row.callMcap : 1;
-      return { ...row, peakX, nowX, paper: paperTrade(row.callMcap, row.peakMcap, row.nowMcap) };
+      return { ...row, peakX, nowX, paper: paperTrade(row.callMcap, peakMcap, row.nowMcap) };
     })
     .sort((a, b) => b.peakX - a.peakX);
   const hits2 = rows.filter((row) => row.peakX >= 2).length;
@@ -1025,7 +1015,6 @@ function TokenView({
   onBack,
   onWatch,
   onCopy,
-  onPeak,
 }: {
   token: Scored | null;
   rec?: CallRec;
@@ -1035,18 +1024,8 @@ function TokenView({
   onBack: () => void;
   onWatch: () => void;
   onCopy: () => void;
-  onPeak: (mint: string, mcap: number) => void;
 }) {
   const mint = token?.mint ?? rec?.mint ?? "";
-  const [candleHigh, setCandleHigh] = useState(0);
-  const onPeakRef = useRef(onPeak);
-  onPeakRef.current = onPeak;
-  useEffect(() => {
-    setCandleHigh(0);
-  }, [mint]);
-  useEffect(() => {
-    if (candleHigh > 0 && mint) onPeakRef.current(mint, candleHigh);
-  }, [candleHigh, mint]);
   if (!token && !rec) {
     return <Empty title="Token left the scan" body="It is not in the latest pass. Go back and refresh." />;
   }
@@ -1056,8 +1035,7 @@ function TokenView({
   const pairUrl = token?.pairUrl ?? rec?.pairUrl ?? `https://dexscreener.com/solana/${mint}`;
   const liveMcap = token && token.mcap > 0 ? token.mcap : (rec?.nowMcap ?? 0);
   const since = rec && rec.callMcap > 0 ? liveMcap / rec.callMcap : null;
-  const peakMcap = Math.max(rec?.peakMcap ?? 0, rec?.nowMcap ?? 0, liveMcap, candleHigh);
-  const peak = rec && rec.callMcap > 0 ? peakMcap / rec.callMcap : null;
+  const peak = rec && rec.callMcap > 0 ? sanePeak(rec.callMcap, rec.nowMcap, rec.peakMcap, liveMcap) / rec.callMcap : null;
 
   return (
     <section className="flex flex-col gap-4">
@@ -1103,7 +1081,6 @@ function TokenView({
           mcap={token?.mcap ?? rec?.nowMcap ?? 0}
           callMcap={rec?.callMcap}
           calledAt={rec?.calledAt}
-          onHigh={setCandleHigh}
         />
       </div>
       {token && token.reasons.length > 0 && (
@@ -1180,7 +1157,7 @@ function TokenRow({
 }) {
   const liveMcap = token.mcap > 0 ? token.mcap : (rec?.nowMcap ?? 0);
   const since = rec && rec.callMcap > 0 ? liveMcap / rec.callMcap : null;
-  const peak = rec && rec.callMcap > 0 ? Math.max(rec.peakMcap, rec.nowMcap, liveMcap) / rec.callMcap : null;
+  const peak = rec && rec.callMcap > 0 ? sanePeak(rec.callMcap, rec.nowMcap, rec.peakMcap, liveMcap) / rec.callMcap : null;
   const reason = rec?.reasons[0] ?? token.reasons[0];
   const calledAgo = rec && now ? fmtAge(now - rec.calledAt) : null;
   return (
