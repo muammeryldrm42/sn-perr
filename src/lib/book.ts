@@ -25,6 +25,18 @@ export interface CallRec {
 const BOOK_KEY = "talons.book.v1";
 const WATCH_KEY = "talons.watch.v1";
 const NOTICE_KEY = "talons.notice.v1";
+const SEEN_KEY = "talons.seen.v1";
+
+export function loadSeen(): number {
+  if (typeof window === "undefined") return 0;
+  const n = Number(window.localStorage.getItem(SEEN_KEY));
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+export function saveSeen(at: number) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(SEEN_KEY, String(at));
+}
 
 function isRec(value: unknown): value is CallRec {
   if (!value || typeof value !== "object") return false;

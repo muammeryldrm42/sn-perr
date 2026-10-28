@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Activity,
+  Bell,
   BookOpen,
   ChevronLeft,
   Copy,
@@ -8,17 +9,21 @@ import {
   Radio,
   RefreshCw,
   Search,
+  Share2,
   Star,
   Trophy,
 } from "lucide-react";
 import type { CallTier, Proof, ScanResult, Scored } from "@/lib/gate";
 import { paperTrade } from "@/lib/gate";
 import { clsxPct, fmtAge, fmtPct, fmtUsd, fmtX, shortMint } from "@/lib/format";
-import { dismissNotice, loadBook, loadWatch, mergeBook, noticeDismissed, saveBook, saveWatch, type CallRec } from "@/lib/book";
+import { dismissNotice, loadBook, loadSeen, loadWatch, mergeBook, noticeDismissed, saveBook, saveSeen, saveWatch, type CallRec } from "@/lib/book";
 import { scanMarket, searchMarket } from "@/lib/market-fns";
 import { TokenChart } from "@/components/token-chart";
 
 type View = "calls" | "radar" | "record" | "method" | "watch" | "token";
+type CallSort = "score" | "h1" | "mcap" | "since" | "new";
+
+const PAGE_VIEWS = new Set<View>(["calls", "radar", "record", "method", "watch"]);
 
 const NAV: { id: Exclude<View, "token">; label: string; icon: typeof Activity }[] = [
   { id: "calls", label: "Calls", icon: Activity },
@@ -97,12 +102,43 @@ function TokenMark({ token, size = "size-11" }: { token: { image?: string; symbo
 function buyLinks(mint: string, pairUrl: string) {
   const links = [
     { label: "Jupiter", href: `https://jup.ag/swap/SOL-${mint}` },
+    { label: "BullX", href: `https://bullx.io/terminal?chainId=1399811149&address=${mint}` },
     { label: "GMGN", href: `https://gmgn.ai/sol/token/${mint}` },
     { label: "Axiom", href: `https://axiom.trade/t/${mint}` },
     { label: "DexScreener", href: pairUrl },
   ];
   if (mint.toLowerCase().endsWith("pump")) links.push({ label: "Pump.fun", href: `https://pump.fun/coin/${mint}` });
   return links;
+}
+
+function parseHash(hash: string): { view: View; mint: string | null } {
+  const raw = hash.replace(/^#/, "");
+  if (raw.startsWith("t/") && raw.length > 2) return { view: "token", mint: decodeURIComponent(raw.slice(2)) };
+  if (PAGE_VIEWS.has(raw as View)) return { view: raw as View, mint: null };
+  return { view: "calls", mint: null };
+}
+
+function writeHash(view: View, mint: string | null) {
+  const next = view === "token" && mint ? `#t/${encodeURIComponent(mint)}` : view === "calls" ? "#calls" : `#${view}`;
+  if (window.location.hash === next) return;
+  window.history.pushState(null, "", next);
+}
+
+function shareText(symbol: string, rec?: CallRec): string {
+  if (!rec || !(rec.callMcap > 0)) return `${symbol} is on the Talons radar. Memecoins rug. Not financial advice.`;
+  const nowX = rec.nowMcap / rec.callMcap;
+  const peakX = rec.peakMcap / rec.callMcap;
+  return `${symbol} on Talons — called at ${fmtUsd(rec.callMcap)}, now ${fmtX(nowX)}, peak ${fmtX(peakX)}. Memecoins rug. Not financial advice.`;
+}
+
+function openShare(symbol: string, rec?: CallRec) {
+  const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText(symbol, rec))}`;
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
+function multiple(rec?: CallRec): number {
+  if (!rec || !(rec.callMcap > 0)) return 0;
+  return rec.nowMcap / rec.callMcap;
 }
 
 export function TalonsApp({ initial }: { initial: ScanResult }) {
@@ -119,13 +155,18 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
   const [extra, setExtra] = useState<Scored[]>([]);
   const [searching, setSearching] = useState(false);
   const [tier, setTier] = useState<(typeof TIERS)[number]["id"]>("all");
-  const [sort, setSort] = useState<"score" | "h1" | "mcap">("score");
+  const [sort, setSort] = useState<CallSort>("score");
   const [book, setBook] = useState<CallRec[]>([]);
   const [watch, setWatch] = useState<string[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const [showNotice, setShowNotice] = useState(false);
   const [now, setNow] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
+  const [seenAt, setSeenAt] = useState(0);
+  const [alertsOpen, setAlertsOpen] = useState(false);
+  const [alertRows, setAlertRows] = useState<CallRec[]>([]);
+  const seenBoot = useRef(false);
+  const lookedUp = useRef(new Set<string>());
 
   useEffect(() => {
     setWatch(loadWatch());
@@ -148,11 +189,48 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
   }, [tokens, hydrated]);
 
   useEffect(() => {
+    if (!hydrated || seenBoot.current) return;
+    seenBoot.current = true;
+    const stored = loadSeen();
+    if (stored > 0) setSeenAt(stored);
+    else {
+      const stamp = Date.now();
+      saveSeen(stamp);
+      setSeenAt(stamp);
+    }
+  }, [hydrated]);
+
+  useEffect(() => {
+    const apply = () => {
+      const next = parseHash(window.location.hash);
+      setView(next.view);
+      if (next.mint) setMint(next.mint);
+      if (next.view !== "token") setReturnTo(next.view);
+    };
+    apply();
+    window.addEventListener("hashchange", apply);
+    return () => window.removeEventListener("hashchange", apply);
+  }, []);
+
+  useEffect(() => {
     const id = window.setInterval(() => {
       if (document.visibilityState === "visible") void refresh();
     }, 30_000);
     return () => window.clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    if (view !== "token" || !mint) return;
+    if (tokens.some((token) => token.mint === mint) || extra.some((token) => token.mint === mint) || lookedUp.current.has(mint)) return;
+    lookedUp.current.add(mint);
+    void searchMarket({ data: { q: mint } })
+      .then((rows) => {
+        const hit = rows.find((row) => row.mint === mint);
+        if (!hit) return;
+        setExtra((prev) => (prev.some((row) => row.mint === hit.mint) ? prev : [hit, ...prev]));
+      })
+      .catch(() => undefined);
+  }, [view, mint, tokens, extra]);
 
   async function refresh() {
     setRefreshing(true);
@@ -189,10 +267,24 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
     setReturnTo(view === "token" ? returnTo : view);
     setMint(nextMint);
     setView("token");
+    writeHash("token", nextMint);
   }
 
   function go(next: Exclude<View, "token">) {
     setView(next);
+    setMint(null);
+    writeHash(next, null);
+  }
+
+  function openAlerts() {
+    const fresh = book.filter((row) => row.calledAt > seenAt).sort((a, b) => b.calledAt - a.calledAt);
+    setAlertRows(fresh);
+    setAlertsOpen((open) => !open);
+    if (fresh.length) {
+      const stamp = Date.now();
+      saveSeen(stamp);
+      setSeenAt(stamp);
+    }
   }
 
   function toggleWatch(nextMint: string) {
@@ -223,6 +315,8 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
   const sortedCalls = [...calls].sort((a, b) => {
     if (sort === "h1") return b.chgH1 - a.chgH1;
     if (sort === "mcap") return b.mcap - a.mcap;
+    if (sort === "since") return multiple(bookByMint.get(b.mint)) - multiple(bookByMint.get(a.mint));
+    if (sort === "new") return (bookByMint.get(b.mint)?.calledAt ?? 0) - (bookByMint.get(a.mint)?.calledAt ?? 0);
     return b.score - a.score;
   });
   const radar = matched.filter((token) => !token.called).sort((a, b) => b.score - a.score);
@@ -232,6 +326,12 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
   const selected = mint ? pool.find((token) => token.mint === mint) ?? null : null;
   const selectedRec = mint ? bookByMint.get(mint) : undefined;
   const movers = [...pool].filter((token) => token.chgH1 >= 20).sort((a, b) => b.chgH1 - a.chgH1).slice(0, 14);
+  const winners = book
+    .map((row) => ({ ...row, peakX: row.callMcap > 0 ? row.peakMcap / row.callMcap : 1 }))
+    .filter((row) => row.peakX >= 2)
+    .sort((a, b) => b.peakX - a.peakX)
+    .slice(0, 8);
+  const unseen = book.filter((row) => row.calledAt > seenAt).length;
   const age = now ? fmtAge(now - scannedAt) : "now";
   const feedDown = sources.some((source) => source.id === "pairs" && !source.ok);
 
@@ -292,6 +392,19 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
             </span>
             <button
               type="button"
+              onClick={openAlerts}
+              className="relative grid size-11 place-items-center rounded-lg border border-line text-muted"
+              aria-label="New calls"
+            >
+              <Bell className="size-4" />
+              {unseen > 0 && (
+                <span className="absolute -top-1 -right-1 grid min-w-4 place-items-center rounded-full bg-flow px-1 font-mono text-[10px] text-bg">
+                  {unseen > 9 ? "9+" : unseen}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
               onClick={() => void refresh()}
               className="inline-flex h-11 items-center gap-2 rounded-lg border border-line bg-panel px-3 text-sm text-muted"
               aria-label="Refresh scan"
@@ -300,6 +413,30 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
               <span className="hidden md:inline">{refreshing ? "Scanning" : `${age} ago`}</span>
             </button>
           </div>
+          {alertsOpen && (
+            <div className="absolute inset-x-3 top-16 z-30 max-h-80 overflow-y-auto rounded-lg border border-line bg-panel p-2 shadow-lg lg:inset-x-auto lg:right-5 lg:w-96">
+              <p className="px-2 py-1 font-mono text-xs tracking-widest text-dim uppercase">New since you last looked</p>
+              {alertRows.length === 0 ? (
+                <p className="px-2 py-3 text-sm text-muted">No new calls.</p>
+              ) : (
+                alertRows.map((row) => (
+                  <button
+                    key={row.mint}
+                    type="button"
+                    onClick={() => {
+                      setAlertsOpen(false);
+                      openToken(row.mint);
+                    }}
+                    className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-left"
+                  >
+                    <TokenMark token={row} size="size-8" />
+                    <span className="min-w-0 flex-1 truncate font-mono text-sm">{row.symbol}</span>
+                    <span className="font-mono text-xs text-dim">{fmtUsd(row.callMcap)}</span>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
         </header>
 
         <main className="mx-auto flex min-w-0 max-w-6xl flex-col gap-4 px-3 py-4 pb-24 lg:px-5 lg:pb-10">
@@ -333,6 +470,7 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
           {view === "calls" && (
             <CallsView
               calls={sortedCalls}
+              winners={winners}
               radarCount={radar.length}
               bookCount={book.length}
               tier={tier}
@@ -437,6 +575,7 @@ function NavButton({
 
 function CallsView({
   calls,
+  winners,
   radarCount,
   bookCount,
   tier,
@@ -456,12 +595,13 @@ function CallsView({
   onSearch,
 }: {
   calls: Scored[];
+  winners: (CallRec & { peakX: number })[];
   radarCount: number;
   bookCount: number;
   tier: (typeof TIERS)[number]["id"];
   setTier: (tier: (typeof TIERS)[number]["id"]) => void;
-  sort: "score" | "h1" | "mcap";
-  setSort: (sort: "score" | "h1" | "mcap") => void;
+  sort: CallSort;
+  setSort: (sort: CallSort) => void;
   counts: Record<(typeof TIERS)[number]["id"], number>;
   bookByMint: Map<string, CallRec>;
   watch: string[];
@@ -515,6 +655,8 @@ function CallsView({
             ["score", "Score"],
             ["h1", "1h move"],
             ["mcap", "Mcap"],
+            ["since", "Since call"],
+            ["new", "Newest"],
           ] as const
         ).map(([id, label]) => (
           <button
@@ -527,6 +669,21 @@ function CallsView({
           </button>
         ))}
       </div>
+      {winners.length > 0 && (
+        <div className="flex gap-2 overflow-x-auto" aria-label="Calls that reached 2x">
+          {winners.map((row) => (
+            <button
+              key={row.mint}
+              type="button"
+              onClick={() => onOpen(row.mint)}
+              className="inline-flex h-11 shrink-0 items-center gap-2 rounded-full border border-gold/40 bg-panel px-3"
+            >
+              <span className="font-mono text-sm">{row.symbol}</span>
+              <span className="font-mono text-sm text-gold">{fmtX(row.peakX)}</span>
+            </button>
+          ))}
+        </div>
+      )}
       {calls.length === 0 ? (
         <Empty
           title="Nothing cleared the gate"
@@ -639,15 +796,32 @@ function RecordView({ book, now, onOpen }: { book: CallRec[]; now: number | null
   const peaks = [...rows.map((row) => row.peakX)].sort((a, b) => a - b);
   const median = peaks.length ? peaks[Math.floor(peaks.length / 2)] : 1;
   const avgPaper = rows.length ? rows.reduce((sum, row) => sum + row.paper.x, 0) / rows.length : 1;
+  const best = rows[0];
+  const bands = [1.2, 2, 5, 10] as const;
 
   return (
     <section className="flex flex-col gap-4">
-      <div>
-        <p className="font-mono text-xs tracking-widest text-dim uppercase">Track record</p>
-        <h1 className="text-2xl font-semibold tracking-tight">What this browser called</h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted">
-          Entry is the market cap at the first pass. Paper trade sells half at 2x, cuts at 0.6x before that, and trails the rest 35% off the high, net of about 2.5%.
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-mono text-xs tracking-widest text-dim uppercase">Track record</p>
+          <h1 className="text-2xl font-semibold tracking-tight">What this browser called</h1>
+          <p className="mt-1 max-w-2xl text-sm text-muted">
+            Entry is the market cap at the first pass. Paper trade sells half at 2x, cuts at 0.6x before that, and trails the rest 35% off the high, net of about 2.5%.
+          </p>
+        </div>
+        {best && (
+          <button
+            type="button"
+            onClick={() => {
+              const text = `Talons, this browser: ${rows.length} calls, ${Math.round((hits2 / rows.length) * 100)}% hit 2x. Best ${best.symbol} ${fmtX(best.peakX)}. Memecoins rug. Not financial advice.`;
+              window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
+            }}
+            className="inline-flex h-11 shrink-0 items-center gap-2 rounded-lg border border-line px-3 text-sm text-muted"
+          >
+            <Share2 className="size-4" />
+            Share
+          </button>
+        )}
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <Stat label="Calls" value={String(rows.length)} />
@@ -655,6 +829,15 @@ function RecordView({ book, now, onOpen }: { book: CallRec[]; now: number | null
         <Stat label="Hit 5x" value={rows.length ? `${Math.round((hits5 / rows.length) * 100)}%` : "—"} />
         <Stat label="Median peak" value={rows.length ? fmtX(median) : "—"} />
       </div>
+      {rows.length > 0 && (
+        <div className="grid grid-cols-4 gap-2">
+          {bands.map((band) => {
+            const hits = rows.filter((row) => row.peakX >= band).length;
+            return <Stat key={band} label={`${band}x`} value={`${Math.round((hits / rows.length) * 100)}%`} />;
+          })}
+        </div>
+      )}
+      {best && <p className="text-sm text-muted">Best call {best.symbol} peaked at {fmtX(best.peakX)}.</p>}
       <p className="text-sm text-muted">Average paper multiple {rows.length ? fmtX(avgPaper) : "—"}.</p>
       {rows.length === 0 ? (
         <Empty title="The book is empty" body="Calls land here the moment the gate passes. Leave the terminal open and the peaks update every scan." />
@@ -680,6 +863,7 @@ function RecordView({ book, now, onOpen }: { book: CallRec[]; now: number | null
               <span className="text-right">
                 <span className={`block font-mono ${clsxPct(row.nowX - 1)}`}>{fmtX(row.nowX)}</span>
                 <span className="block font-mono text-xs text-gold">peak {fmtX(row.peakX)}</span>
+                <span className="block font-mono text-xs text-dim">{row.paper.status} {fmtX(row.paper.x)}</span>
               </span>
             </button>
           ))}
@@ -783,6 +967,9 @@ function TokenView({
         </div>
         <button type="button" onClick={onWatch} aria-label={watched ? "Unstar" : "Star"} className="grid size-11 place-items-center rounded-lg border border-line">
           <Star className={`size-4 ${watched ? "fill-gold text-gold" : "text-dim"}`} />
+        </button>
+        <button type="button" onClick={() => openShare(symbol, rec)} aria-label="Share on X" className="grid size-11 place-items-center rounded-lg border border-line text-muted">
+          <Share2 className="size-4" />
         </button>
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
