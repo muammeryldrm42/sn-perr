@@ -727,7 +727,10 @@ function CallsView({
       {showNotice && (
         <div className="flex items-start justify-between gap-3 rounded-lg border border-gold/30 bg-panel p-3">
           <p className="text-sm text-muted">
-            A call is logged {shared ? "once for every visitor on the public site" : "only in this preview, not on the Vercel site"} at the market cap Talons first sees it pass the gate. Memecoins rug. This is not financial advice.
+            {shared
+              ? "A call is logged once for every visitor, at the market cap Talons first sees it pass the gate."
+              : "Calls on this deploy stay in this browser. In Vercel, Neon must set DATABASE_URL or POSTGRES_URL, then redeploy, or the public site will not share one book."}{" "}
+            Memecoins rug. This is not financial advice.
           </p>
           <button type="button" onClick={onDismiss} className="h-11 shrink-0 px-2 text-sm text-gold">
             Hide

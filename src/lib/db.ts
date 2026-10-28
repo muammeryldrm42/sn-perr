@@ -3,12 +3,19 @@ import { pendingMigrations } from "../../scripts/migration-plan.mjs";
 /** Which database backend is active. */
 export type DbSource = "neon" | "pglite";
 
-// An empty/whitespace DATABASE_URL (an easy misconfig in deploy UIs) must mean
-// "unset" — otherwise production would silently run on the PGLite fallback.
-const rawDatabaseUrl =
-  typeof process !== "undefined" ? process.env.DATABASE_URL : undefined;
-const databaseUrl =
-  rawDatabaseUrl && rawDatabaseUrl.trim() ? rawDatabaseUrl : undefined;
+function readDatabaseUrl(): string | undefined {
+  if (typeof process === "undefined") return undefined;
+  const keys = ["DATABASE_URL", "POSTGRES_URL", "POSTGRES_PRISMA_URL", "DATABASE_URL_UNPOOLED", "POSTGRES_URL_NON_POOLING"];
+  for (const key of keys) {
+    let value = process.env[key]?.trim() ?? "";
+    if (value.startsWith("$")) value = value.slice(1).trim();
+    if (value.toUpperCase().startsWith("STORAGE")) value = value.slice("STORAGE".length).trim();
+    if (value.startsWith("postgres://") || value.startsWith("postgresql://")) return value;
+  }
+  return undefined;
+}
+
+const databaseUrl = readDatabaseUrl();
 
 /**
  * Active backend: real **Neon** when `DATABASE_URL` is set (deployed / configured
