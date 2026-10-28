@@ -270,13 +270,15 @@ export async function quotesFor(mints: string[]): Promise<Scored[]> {
 }
 
 function rank(tokens: Scored[]): Scored[] {
-  const kept = new Set(
-    tokens
-      .filter((token) => token.called)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 10)
-      .map((token) => token.mint),
-  );
+  const fresh = tokens
+    .filter((token) => token.called && token.path === "fresh")
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 6);
+  const rest = tokens
+    .filter((token) => token.called && token.path !== "fresh")
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 6);
+  const kept = new Set([...fresh, ...rest].map((token) => token.mint));
   return tokens
     .map((token) => {
       if (!token.called || kept.has(token.mint)) return token;
@@ -312,7 +314,7 @@ async function pumpClimbers(now: number): Promise<string[]> {
       ),
     ),
   );
-  const picks: { mint: string; mcap: number }[] = [];
+  const picks: { mint: string; mcap: number; age: number }[] = [];
   const seen = new Set<string>();
   for (const page of pages) {
     for (const row of asArray(page)) {
@@ -329,15 +331,19 @@ async function pumpClimbers(now: number): Promise<string[]> {
       if (!mint || seen.has(mint) || IGNORE.has(mint) || coin.nsfw || coin.is_banned || coin.hidden) continue;
       const age = coin.created_timestamp ? (now - coin.created_timestamp) / 60_000 : 9_999;
       const mcap = num(coin.usd_market_cap);
-      if (age < 4 || age > 90 || mcap < 9_000 || mcap > 100_000) continue;
+      if (age < 3 || age > 120 || mcap < 8_000 || mcap > 150_000) continue;
       seen.add(mint);
-      picks.push({ mint, mcap });
+      picks.push({ mint, mcap, age });
     }
   }
-  return picks
-    .sort((a, b) => b.mcap - a.mcap)
-    .slice(0, 12)
-    .map((row) => row.mint);
+  const young = [...picks].sort((a, b) => a.age - b.age).slice(0, 8);
+  const big = [...picks].sort((a, b) => b.mcap - a.mcap).slice(0, 8);
+  const out: string[] = [];
+  for (const row of [...young, ...big]) {
+    if (out.includes(row.mint)) continue;
+    out.push(row.mint);
+  }
+  return out;
 }
 
 async function scanFresh(): Promise<ScanResult> {

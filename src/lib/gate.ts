@@ -90,14 +90,14 @@ export function scoreToken(t: MarketToken, now = Date.now()): Scored {
   const m5Buys = t.buysM5 >= t.sellsM5;
 
   const fresh =
-    ageMin >= 4 &&
-    ageMin <= 90 &&
-    t.mcap >= 9_000 &&
-    t.mcap <= 100_000 &&
-    t.chgM5 >= 5 &&
+    ageMin >= 3 &&
+    ageMin <= 120 &&
+    t.mcap >= 8_000 &&
+    t.mcap <= 150_000 &&
+    (t.chgM5 >= 4 || (ageMin <= 45 && t.chgH1 >= 12 && t.chgM5 >= 0)) &&
     m5Buys &&
-    t.buysM5 + t.buysH1 > t.sellsM5 + t.sellsH1 &&
-    t.liq >= 2_500 &&
+    t.buysM5 + t.buysH1 >= t.sellsM5 + t.sellsH1 &&
+    t.liq >= 2_000 &&
     !rollingOver &&
     !chased &&
     !boostFarm &&

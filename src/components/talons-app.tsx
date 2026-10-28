@@ -1092,16 +1092,16 @@ function TokenView({
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <Stat label="Market cap" value={fmtUsd(token?.mcap ?? rec?.nowMcap)} />
-        <Stat label="1h" value={fmtPct(token?.chgH1 ?? rec?.chgH1)} tone={clsxPct(token?.chgH1 ?? rec?.chgH1 ?? 0)} />
+        <Stat label="Called at" value={rec ? fmtUsd(rec.callMcap) : "—"} />
         <Stat label="Since call" value={since ? fmtX(since) : "—"} tone={since ? clsxPct(since - 1) : undefined} />
         <Stat label="Peak" value={peak ? fmtX(peak) : "—"} tone="text-gold" />
       </div>
       {token && (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <Stat label="1h" value={fmtPct(token.chgH1)} tone={clsxPct(token.chgH1)} />
           <Stat label="Liquidity" value={fmtUsd(token.liq)} />
           <Stat label="1h volume" value={fmtUsd(token.volH1)} />
           <Stat label="Score" value={String(token.score)} />
-          <Stat label="Boosts" value={String(token.boosts)} />
         </div>
       )}
       <div className="rounded-lg border border-line bg-panel p-3">
