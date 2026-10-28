@@ -1159,7 +1159,7 @@ function MethodView({ sources, onLab }: { sources: ScanResult["sources"]; onLab:
       <Rule title="RugCheck" body="Public summary, no key. A danger flag blocks that call. Clean, LP lock at least 90%, and no listed risk is a Gem. Missing reports stay Checking and do not become a pass." />
       <Rule title="Other pads" body="Bonk, Meteora, Raydium, and LaunchLab pairs under 6 hours are added when the main list is short. Pump.fun is still the early feed." />
       <Rule title="Not live yet" body="PumpPortal stays open only with a long-lived worker. Wallet bundle, snipe, dev history, and KOL buys need a chain key or a public list that actually returns rows. Those are not faked." />
-      <Rule title="Changelog" body="2026-10-28: four lanes, hourly caps, 30% volume floor on balanced, losers stay in the book, lab counts only stored calls." />
+      <Rule title="Changelog" body="2026-10-28: four lanes, hourly caps, 30% volume floor on balanced, losers stay in the book, lab counts only stored calls. A public schedule wakes the scan about every 15 minutes, even when nobody has the site open. It is not a live socket." />
       <button type="button" onClick={onLab} className="h-11 self-start rounded-lg border border-line px-3 text-sm text-muted">
         Open the lab
       </button>

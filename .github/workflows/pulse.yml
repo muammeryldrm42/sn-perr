@@ -1,0 +1,13 @@
+name: pulse
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+jobs:
+  wake:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wake the public scan
+        run: curl -fsS --retry 2 --max-time 120 "https://sn-perr-ndcb.vercel.app/api/pulse"

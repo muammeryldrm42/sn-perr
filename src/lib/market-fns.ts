@@ -36,6 +36,29 @@ async function loadScan(): Promise<ReadyScan> {
   }
 }
 
+export async function runPulse(): Promise<{ ok: true; skipped: boolean; shared: boolean; tokens: number; calls: number }> {
+  const { dbSource, getSql } = await import("./db");
+  if (dbSource === "neon") {
+    const sql = await getSql();
+    await sql`create table if not exists pulse (id int primary key, last_at bigint not null)`;
+    await sql`insert into pulse (id, last_at) values (1, 0) on conflict (id) do nothing`;
+    const now = Date.now();
+    const gap = 12 * 60 * 1000;
+    const won = await sql<{ last_at: number }>`
+      update pulse set last_at = ${now} where id = 1 and ${now} - last_at >= ${gap} returning last_at
+    `;
+    if (!won.length) return { ok: true, skipped: true, shared: true, tokens: 0, calls: 0 };
+  }
+  const value = await loadScan();
+  return {
+    ok: true,
+    skipped: false,
+    shared: value.shared,
+    tokens: value.tokens.length,
+    calls: value.tokens.filter((token) => token.called).length,
+  };
+}
+
 export const scanMarket = createServerFn({ method: "GET" }).handler(async () => {
   const now = Date.now();
   if (hot && now - hot.at < 25_000) {
