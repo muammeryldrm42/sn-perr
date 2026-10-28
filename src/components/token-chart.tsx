@@ -28,14 +28,16 @@ export function TokenChart({
   const host = useRef<HTMLDivElement>(null);
   const [span, setSpan] = useState<1 | 5 | 15>(5);
   const [status, setStatus] = useState<"loading" | "empty" | "ready">("loading");
+  const [note, setNote] = useState("");
   const pair = pairOf(pairUrl);
+  const drawn = useRef<1 | 5 | 15>(5);
+  const closeChart = useRef(() => {});
 
   useEffect(() => {
     const node = host.current;
     if (!node) return;
     let dead = false;
-    let remove = () => {};
-    setStatus("loading");
+    if (drawn.current === span) setStatus("loading");
 
     void (async () => {
       let rows: Candle[] = [];
@@ -46,12 +48,14 @@ export function TokenChart({
       }
       if (dead || !host.current) return;
       if (rows.length < 2) {
-        setStatus("empty");
+        if (drawn.current !== span) setNote("That timeframe did not load.");
+        else setStatus("empty");
         return;
       }
 
       const { CandlestickSeries, ColorType, createChart, createSeriesMarkers } = await import("lightweight-charts");
       if (dead || !host.current) return;
+      closeChart.current();
 
       const lastClose = rows[rows.length - 1]?.c ?? 0;
       const scale = lastClose > 0 && mcap > 0 ? mcap / lastClose : priceUsd > 0 && mcap > 0 ? mcap / priceUsd : 1;
@@ -155,15 +159,18 @@ export function TokenChart({
       }
 
       chart.timeScale().fitContent();
+      drawn.current = span;
+      setNote("");
       setStatus("ready");
-      remove = () => chart.remove();
+      closeChart.current = () => chart.remove();
     })();
 
     return () => {
       dead = true;
-      remove();
     };
   }, [mint, span, pair, priceUsd, mcap, callMcap, calledAt]);
+
+  useEffect(() => () => closeChart.current(), []);
 
   return (
     <div>
@@ -180,6 +187,7 @@ export function TokenChart({
         ))}
         <p className="ml-auto font-mono text-[10px] tracking-widest text-dim uppercase">Market cap</p>
       </div>
+      {note ? <p className="mb-2 font-mono text-xs text-warn">{note}</p> : null}
       <div className="relative h-[28rem] overflow-hidden rounded-lg bg-[#0b0d12]">
         {status === "loading" && <div className="absolute inset-0 animate-pulse bg-[#11151c]" />}
         {status === "empty" && (

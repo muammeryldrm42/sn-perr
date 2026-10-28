@@ -410,8 +410,30 @@ export async function buildSearch(query: string): Promise<Scored[]> {
   ).slice(0, 12);
 }
 
+function bucketCandles(rows: Candle[], minutes: number): Candle[] {
+  const size = minutes * 60_000;
+  const buckets = new Map<number, Candle>();
+  for (const candle of [...rows].sort((a, b) => a.t - b.t)) {
+    const t = Math.floor(candle.t / size) * size;
+    const bar = buckets.get(t);
+    if (!bar) {
+      buckets.set(t, { t, o: candle.o, h: candle.h, l: candle.l, c: candle.c });
+      continue;
+    }
+    bar.h = Math.max(bar.h, candle.h);
+    bar.l = Math.min(bar.l, candle.l);
+    bar.c = candle.c;
+  }
+  return [...buckets.values()];
+}
+
 export async function buildCandles(mint: string, aggregate = 1, pair = ""): Promise<Candle[]> {
   const span = aggregate === 15 ? 15 : aggregate === 5 ? 5 : 1;
+  if (span === 15) return bucketCandles(await loadSpan(mint, 5, pair), 15);
+  return loadSpan(mint, span, pair);
+}
+
+async function loadSpan(mint: string, span: number, pair: string): Promise<Candle[]> {
   const key = `${mint}:${span}`;
   const hit = candleCache.get(key);
   if (hit && Date.now() - hit.at < 180_000) return hit.rows;
@@ -444,7 +466,8 @@ async function readOhlcv(pool: string, aggregate: number): Promise<Candle[]> {
   const candles: Candle[] = [];
   for (const row of list) {
     if (!Array.isArray(row) || row.length < 5) continue;
-    const t = num(row[0]) * 1000;
+    const raw = num(row[0]);
+    const t = raw > 1e12 ? raw : raw * 1000;
     const o = num(row[1]);
     const h = num(row[2]);
     const l = num(row[3]);
