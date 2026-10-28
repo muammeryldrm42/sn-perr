@@ -39,6 +39,31 @@ export function nextPeak(callMcap: number, prevNow: number, prevPeak: number, ne
   return sanePeak(callMcap, nextMcap, peak, nextMcap, liq);
 }
 
+const HOUR = 60 * 60 * 1000;
+const DAY = 24 * HOUR;
+
+function laneOf(path: Proof): "core" | "risky" | "ultra" {
+  if (path === "ultra") return "ultra";
+  if (path === "fresh") return "risky";
+  return "core";
+}
+
+/** Balanced and conservative share 3 an hour and 50 a day. Risky is 15 an hour. Ultra is 40 an hour. */
+export function withinCap(path: Proof, rows: { calledAt: number; path: Proof }[], now: number): boolean {
+  const lane = laneOf(path);
+  const perHour = lane === "ultra" ? 40 : lane === "risky" ? 15 : 3;
+  const perDay = lane === "ultra" ? 120 : lane === "risky" ? 80 : 50;
+  let hour = 0;
+  let day = 0;
+  for (const row of rows) {
+    if (laneOf(row.path) !== lane) continue;
+    const age = now - row.calledAt;
+    if (age >= 0 && age <= DAY) day += 1;
+    if (age >= 0 && age <= HOUR) hour += 1;
+  }
+  return hour < perHour && day < perDay;
+}
+
 const BOOK_KEY = "talons.book.v1";
 const WATCH_KEY = "talons.watch.v1";
 const NOTICE_KEY = "talons.notice.v1";
@@ -124,6 +149,8 @@ export function mergeBook(tokens: { mint: string; symbol: string; name: string; 
       continue;
     }
     if (!existing) {
+      const taken = [...map.values()].map((row) => ({ calledAt: row.calledAt, path: row.path }));
+      if (!withinCap(token.path, taken, now)) continue;
       map.set(token.mint, {
         mint: token.mint,
         symbol: token.symbol,

@@ -20,10 +20,10 @@ import { dismissNotice, loadBook, loadSeen, loadWatch, mergeBook, noticeDismisse
 import { scanMarket, searchMarket } from "@/lib/market-fns";
 import { TokenChart } from "@/components/token-chart";
 
-type View = "calls" | "radar" | "record" | "method" | "watch" | "token";
+type View = "calls" | "radar" | "record" | "method" | "lab" | "watch" | "token";
 type CallSort = "score" | "h1" | "mcap" | "since" | "new";
 
-const PAGE_VIEWS = new Set<View>(["calls", "radar", "record", "method", "watch"]);
+const PAGE_VIEWS = new Set<View>(["calls", "radar", "record", "method", "lab", "watch"]);
 
 const NAV: { id: Exclude<View, "token">; label: string; icon: typeof Activity }[] = [
   { id: "calls", label: "Calls", icon: Activity },
@@ -37,6 +37,7 @@ const TIERS: { id: "all" | CallTier; label: string }[] = [
   { id: "conservative", label: "Conservative" },
   { id: "balanced", label: "Balanced" },
   { id: "risky", label: "Risky" },
+  { id: "ultra", label: "Ultra" },
 ];
 
 function dexLabel(dex: string): string {
@@ -55,13 +56,14 @@ function pathLabel(path: Proof | null): string {
   if (path === "runner") return "Runner";
   if (path === "graduated") return "Graduated";
   if (path === "boosted") return "Boosted";
-  if (path === "fresh") return "Fresh";
+  if (path === "fresh") return "Risky";
+  if (path === "ultra") return "Ultra";
   if (path === "reclaim") return "Reclaim";
   return "Radar";
 }
 
 function pathClass(path: Proof | null): string {
-  if (path === "fresh") return "text-warn";
+  if (path === "fresh" || path === "ultra") return "text-warn";
   if (path === "runner") return "text-flow";
   if (path === "boosted") return "text-gold";
   if (path === "reclaim") return "text-gold";
@@ -100,7 +102,7 @@ function bookToken(rec: CallRec): Scored {
     score: rec.score,
     called: true,
     path: rec.path,
-    tier: rec.path === "fresh" ? "risky" : "balanced",
+    tier: rec.path === "fresh" ? "risky" : rec.path === "ultra" ? "ultra" : "balanced",
     reasons: rec.reasons,
     blockers: [],
     checks: [],
@@ -152,11 +154,14 @@ function buyLinks(mint: string, pairUrl: string) {
   return links;
 }
 
-function parseHash(hash: string): { view: View; mint: string | null } {
+function parseHash(hash: string): { view: View; mint: string | null; tier: (typeof TIERS)[number]["id"] | null } {
   const raw = hash.replace(/^#/, "");
-  if (raw.startsWith("t/") && raw.length > 2) return { view: "token", mint: decodeURIComponent(raw.slice(2)) };
-  if (PAGE_VIEWS.has(raw as View)) return { view: raw as View, mint: null };
-  return { view: "calls", mint: null };
+  if (raw.startsWith("t/") && raw.length > 2) return { view: "token", mint: decodeURIComponent(raw.slice(2)), tier: null };
+  if (raw === "conservative" || raw === "balanced" || raw === "risky" || raw === "ultra") return { view: "calls", mint: null, tier: raw };
+  if (raw === "fresh") return { view: "calls", mint: null, tier: "risky" };
+  if (raw === "archive") return { view: "record", mint: null, tier: null };
+  if (PAGE_VIEWS.has(raw as View)) return { view: raw as View, mint: null, tier: raw === "calls" ? "balanced" : null };
+  return { view: "calls", mint: null, tier: "balanced" };
 }
 
 function writeHash(view: View, mint: string | null) {
@@ -251,6 +256,7 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
     const apply = () => {
       const next = parseHash(window.location.hash);
       setView(next.view);
+      if (next.tier) setTier(next.tier);
       if (next.mint) setMint(next.mint);
       if (next.view !== "token") setReturnTo(next.view);
     };
@@ -583,6 +589,7 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
                 conservative: [...board.values()].filter((token) => token.tier === "conservative").length,
                 balanced: [...board.values()].filter((token) => token.tier === "balanced").length,
                 risky: [...board.values()].filter((token) => token.tier === "risky").length,
+                ultra: [...board.values()].filter((token) => token.tier === "ultra").length,
               }}
               bookByMint={bookByMint}
               watch={watch}
@@ -604,7 +611,8 @@ export function TalonsApp({ initial }: { initial: ScanResult }) {
             <RadarView tokens={radar.slice(0, 30)} watch={watch} now={now} onOpen={openToken} onWatch={toggleWatch} />
           )}
           {view === "record" && <RecordView book={book} shared={shared} onOpen={openToken} />}
-          {view === "method" && <MethodView sources={sources} />}
+          {view === "method" && <MethodView sources={sources} onLab={() => go("lab")} />}
+          {view === "lab" && <LabView book={book} />}
           {view === "watch" && (
             <WatchView tokens={watched} missing={watch.length - watched.length} bookByMint={bookByMint} watch={watch} now={now} onOpen={openToken} onWatch={toggleWatch} />
           )}
@@ -918,9 +926,7 @@ function RecordView({ book, shared, onOpen }: { book: CallRec[]; shared: boolean
           <p className="font-mono text-xs tracking-widest text-dim uppercase">Track record</p>
           <h1 className="text-2xl font-semibold tracking-tight">{shared ? "One book for every visitor" : "What this browser called"}</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted">
-            {shared
-              ? "Entry is the market cap the first time the gate passed, for everyone. Paper trade sells half at 2x, cuts at 0.6x before that, and trails the rest 35% off the high, net of about 2.5%."
-              : "Entry is the market cap at the first pass in this browser. Connect Postgres on Vercel and the book becomes the same for every visitor."}
+            Losers stay in this list. Entry is the market cap at the first pass. Paper trade sells half at 2x, cuts at 0.6x before that, and trails the rest 35% off the high, net of 2.5%.
           </p>
         </div>
         {best && (
@@ -936,6 +942,25 @@ function RecordView({ book, shared, onOpen }: { book: CallRec[]; shared: boolean
             Share
           </button>
         )}
+        <button
+          type="button"
+          onClick={() => {
+            const header = "symbol,mint,called_at,call_mcap,now_mcap,peak_mcap,path,now_x,peak_x";
+            const lines = rows.map((row) =>
+              [row.symbol, row.mint, row.calledAt, row.callMcap, row.nowMcap, sanePeak(row.callMcap, row.nowMcap, row.peakMcap, 0, row.liq), row.path, row.nowX.toFixed(4), row.peakX.toFixed(4)].join(","),
+            );
+            const blob = new Blob([[header, ...lines].join("\n")], { type: "text/csv" });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = "talons-calls.csv";
+            link.click();
+            URL.revokeObjectURL(url);
+          }}
+          className="inline-flex h-11 shrink-0 items-center rounded-lg border border-line px-3 text-sm text-muted"
+        >
+          Export
+        </button>
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <Stat label="Calls" value={String(rows.length)} />
@@ -969,7 +994,7 @@ function RecordView({ book, shared, onOpen }: { book: CallRec[]; shared: boolean
               <TokenMark token={row} />
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-mono font-semibold">{row.symbol}</span>
-                <span className="block text-xs text-dim">Called at {fmtUsd(row.callMcap)}</span>
+                <span className="block text-xs text-dim">Called at {fmtUsd(row.callMcap)} · now {fmtX(row.nowX)}</span>
               </span>
               <span className="font-mono text-xl text-gold">{fmtX(row.peakX)}</span>
             </button>
@@ -989,14 +1014,14 @@ function RecordView({ book, shared, onOpen }: { book: CallRec[]; shared: boolean
   );
 }
 
-function MethodView({ sources }: { sources: ScanResult["sources"] }) {
+function MethodView({ sources, onLab }: { sources: ScanResult["sources"]; onLab: () => void }) {
   return (
     <section className="flex max-w-3xl flex-col gap-4">
       <div>
         <p className="font-mono text-xs tracking-widest text-dim uppercase">How a call is made</p>
-        <h1 className="text-2xl font-semibold tracking-tight">Public data, one gate</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Fewer calls. Nothing hidden.</h1>
         <p className="mt-1 text-sm text-muted">
-          This terminal does not invent wallet reads. Bundles, snipers, and KOL buys need a chain worker. Here the proof comes from DexScreener and GeckoTerminal.
+          A call stays in the book, winners and losers. These are the live numbers. Wallet reads, KOL buys, and RugCheck are not live yet, so they are not pretended.
         </p>
       </div>
       <div className="grid gap-2 sm:grid-cols-2">
@@ -1009,20 +1034,58 @@ function MethodView({ sources }: { sources: ScanResult["sources"] }) {
           </div>
         ))}
       </div>
-      <Rule title="Fresh" body="New launch, 4–70 minutes old, $12K–$80K, last 5 minutes green, buys ahead of sells." />
-      <Rule title="Runner" body="Up to about $1.5M and a day old. The last 5 minutes are still alive and buys lead." />
-      <Rule title="Graduated" body="Off the curve within a day, under about $1.2M, and the 5-minute window is not red." />
-      <Rule title="Boosted" body="A paid profile only counts when price is bidding with it." />
-      <Rule title="Reclaim" body="The hour is red, but the last 5 minutes flipped green. Not a freefall." />
-      <Rule title="How many" body="Each pass keeps the strongest setups. A call stays on the board for 8 hours and is marked Cooling if the bid fades." />
-      <Rule
-        title="Tiers"
-        body="Fresh launches are Risky. Conservative needs thicker liquidity, a calmer hour, a social or boosts, and buys ahead of sells. Everything else that passes is Balanced."
-      />
-      <Rule
-        title="Paper trade"
-        body="Buy at the call. Sell half at 2x. If it never hits 2x and falls to 0.6x, cut. After 2x, sell the rest 35% off the high. About 2.5% comes off for costs."
-      />
+      <Rule title="Ultra" body="First 3 minutes, market cap $6K to $80K, at least 3 buys, buys ahead of sells, liquidity at least $1.5K. Cap: 40 an hour, 120 a day." />
+      <Rule title="Risky" body="3 to 45 minutes old, $6K to $40K, buys at least 1.5x the sells. Cap: 15 an hour, 80 a day. #risky and #fresh open this list." />
+      <Rule title="Balanced" body="Runner or graduated, under a day old, buys ahead, and traded volume at least 30% of market cap. Shares a cap with conservative: 3 an hour, 50 a day. #calls opens this list." />
+      <Rule title="Conservative" body="A balanced call with liquidity at least 8% of market cap, age at least 20 minutes, hour between -5% and +80%, buys at least 1.1x sells. No paid-boost shortcut." />
+      <Rule title="Rejected" body="Paid boost with thin volume, a big hourly candle without trades, a dump, a rollover, or a chase. Those stay off the book." />
+      <Rule title="Paper trade" body="Buy at the call. Sell half at 2x. If it never hits 2x and trades at 0.6x, cut. After 2x, sell the rest 35% off the high. 2.5% is taken off for costs. This is an estimate from entry, peak, and the latest price." />
+      <Rule title="Not live yet" body="PumpPortal stream, bundle and snipe reads, dev history, RugCheck, and KOL wallets need a chain worker. The lab will not invent those results." />
+      <Rule title="Changelog" body="2026-10-28: four lanes, hourly caps, 30% volume floor on balanced, losers stay in the book, lab counts only stored calls." />
+      <button type="button" onClick={onLab} className="h-11 self-start rounded-lg border border-line px-3 text-sm text-muted">
+        Open the lab
+      </button>
+    </section>
+  );
+}
+
+function LabView({ book }: { book: CallRec[] }) {
+  const lanes = [
+    { id: "core", label: "Balanced and conservative", match: (row: CallRec) => row.path !== "fresh" && row.path !== "ultra" },
+    { id: "risky", label: "Risky", match: (row: CallRec) => row.path === "fresh" },
+    { id: "ultra", label: "Ultra", match: (row: CallRec) => row.path === "ultra" },
+  ] as const;
+  return (
+    <section className="flex max-w-3xl flex-col gap-4">
+      <div>
+        <p className="font-mono text-xs tracking-widest text-dim uppercase">Public lab</p>
+        <h1 className="text-2xl font-semibold tracking-tight">Measured from the book</h1>
+        <p className="mt-1 text-sm text-muted">
+          Hit rate is peak over the call, from calls that are actually stored. A small sample is a small sample. Trial rules without chain data are not scored.
+        </p>
+      </div>
+      {book.length === 0 ? (
+        <Empty title="Nothing to measure" body="The lab fills when the book has calls. No sample is invented." />
+      ) : (
+        <div className="grid gap-2">
+          {lanes.map((lane) => {
+            const rows = book.filter(lane.match);
+            const hit2 = rows.filter((row) => row.callMcap > 0 && sanePeak(row.callMcap, row.nowMcap, row.peakMcap, 0, row.liq) / row.callMcap >= 2).length;
+            const lost = rows.filter((row) => row.callMcap > 0 && row.nowMcap / row.callMcap <= 0.2).length;
+            const paper = rows.length ? rows.reduce((sum, row) => sum + paperTrade(row.callMcap, row.peakMcap, row.nowMcap).x, 0) / rows.length : 0;
+            return (
+              <article key={lane.id} className="rounded-lg border border-line bg-panel p-4">
+                <h2 className="font-medium">{lane.label}</h2>
+                <p className="mt-1 font-mono text-sm text-muted">
+                  {rows.length} calls
+                  {rows.length ? ` · ${Math.round((hit2 / rows.length) * 100)}% hit 2x · ${Math.round((lost / rows.length) * 100)}% at or under 0.2x · paper ${fmtX(paper)}` : " · no calls yet"}
+                </p>
+                {rows.length > 0 && rows.length < 20 ? <p className="mt-1 text-xs text-dim">Under 20 calls. Do not treat this as a result.</p> : null}
+              </article>
+            );
+          })}
+        </div>
+      )}
     </section>
   );
 }

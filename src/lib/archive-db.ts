@@ -1,6 +1,6 @@
 import { dbSource, getSql } from "@/lib/db";
 import type { CallRec } from "@/lib/book";
-import { sanePeak } from "@/lib/book";
+import { sanePeak, withinCap } from "@/lib/book";
 import type { Proof, Scored } from "@/lib/gate";
 
 interface CallRow {
@@ -26,7 +26,7 @@ interface CallRow {
 }
 
 function asPath(value: string): Proof {
-  if (value === "runner" || value === "graduated" || value === "boosted" || value === "fresh" || value === "reclaim") return value;
+  if (value === "runner" || value === "graduated" || value === "boosted" || value === "fresh" || value === "reclaim" || value === "ultra") return value;
   return "fresh";
 }
 
@@ -81,8 +81,17 @@ export async function syncSharedBook(tokens: Scored[]): Promise<{ shared: boolea
   try {
     const sql = await getSql();
     const now = Date.now();
+    const prior = await sql<{ mint: string; called_at: number; path: string }>`
+      select mint, called_at, path from calls order by called_at desc limit 400
+    `;
+    const known = new Map(prior.map((row) => [row.mint, row]));
     await eachLimited(tokens.filter((token) => token.mcap > 0), 8, async (token) => {
       if (token.called && token.path) {
+        if (!known.has(token.mint)) {
+          const taken = [...known.values()].map((row) => ({ calledAt: Number(row.called_at), path: asPath(row.path) }));
+          if (!withinCap(token.path, taken, now)) return;
+          known.set(token.mint, { mint: token.mint, called_at: now, path: token.path });
+        }
         await sql`
           insert into calls (
             mint, symbol, name, image, dex, pair_url, called_at, call_mcap, peak_mcap, now_mcap,
@@ -144,9 +153,9 @@ export async function syncSharedBook(tokens: Scored[]): Promise<{ shared: boolea
         `;
       }
     });
-    const known = new Set(tokens.map((token) => token.mint));
+    const seen = new Set(tokens.map((token) => token.mint));
     const open = await sql<{ mint: string }>`select mint from calls order by called_at desc limit 60`;
-    const missing = open.map((row) => row.mint).filter((mint) => !known.has(mint));
+    const missing = open.map((row) => row.mint).filter((mint) => !seen.has(mint));
     if (missing.length) {
       const { quotesFor } = await import("./scan-core");
       const quotes = await quotesFor(missing);

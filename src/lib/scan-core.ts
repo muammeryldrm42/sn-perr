@@ -270,15 +270,15 @@ export async function quotesFor(mints: string[]): Promise<Scored[]> {
 }
 
 function rank(tokens: Scored[]): Scored[] {
-  const fresh = tokens
-    .filter((token) => token.called && token.path === "fresh")
+  const early = tokens
+    .filter((token) => token.called && (token.path === "fresh" || token.path === "ultra"))
     .sort((a, b) => b.score - a.score)
     .slice(0, 6);
   const rest = tokens
     .filter((token) => token.called && token.path !== "fresh")
     .sort((a, b) => b.score - a.score)
     .slice(0, 6);
-  const kept = new Set([...fresh, ...rest].map((token) => token.mint));
+  const kept = new Set([...early, ...rest].map((token) => token.mint));
   return tokens
     .map((token) => {
       if (!token.called || kept.has(token.mint)) return token;
@@ -331,7 +331,7 @@ async function pumpClimbers(now: number): Promise<string[]> {
       if (!mint || seen.has(mint) || IGNORE.has(mint) || coin.nsfw || coin.is_banned || coin.hidden) continue;
       const age = coin.created_timestamp ? (now - coin.created_timestamp) / 60_000 : 9_999;
       const mcap = num(coin.usd_market_cap);
-      if (age < 3 || age > 120 || mcap < 8_000 || mcap > 150_000) continue;
+      if (age < 0.4 || age > 120 || mcap < 6_000 || mcap > 150_000) continue;
       seen.add(mint);
       picks.push({ mint, mcap, age });
     }

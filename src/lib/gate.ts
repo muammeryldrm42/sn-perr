@@ -1,5 +1,5 @@
-export type Proof = "runner" | "graduated" | "boosted" | "fresh" | "reclaim";
-export type CallTier = "conservative" | "balanced" | "risky";
+export type Proof = "runner" | "graduated" | "boosted" | "fresh" | "reclaim" | "ultra";
+export type CallTier = "conservative" | "balanced" | "risky" | "ultra";
 
 export interface MarketToken {
   mint: string;
@@ -88,20 +88,33 @@ export function scoreToken(t: MarketToken, now = Date.now()): Scored {
   const sizeOk = t.mcap >= 5_000 && t.mcap <= 40_000_000;
   const health = !dumping && !sellHeavy && !thin && sizeOk && !rollingOver && !chased && !boostFarm && !thinRip;
   const m5Buys = t.buysM5 >= t.sellsM5;
+  const earlyLead = t.sellsM5 === 0 ? t.buysM5 >= 4 : t.buysM5 >= t.sellsM5 * 1.5;
+  const traded = t.volH1 >= t.mcap * 0.3 || t.volH24 >= t.mcap * 0.3;
+
+  const ultra =
+    t.createdAt > 0 &&
+    ageMin <= 3 &&
+    t.mcap >= 6_000 &&
+    t.mcap <= 80_000 &&
+    m5Buys &&
+    t.buysM5 >= 3 &&
+    t.liq >= 1_500 &&
+    !dumping &&
+    !boostFarm &&
+    !thinRip;
 
   const fresh =
-    ageMin >= 3 &&
-    ageMin <= 120 &&
-    t.mcap >= 8_000 &&
-    t.mcap <= 150_000 &&
-    (t.chgM5 >= 4 || (ageMin <= 45 && t.chgH1 >= 12 && t.chgM5 >= 0)) &&
-    m5Buys &&
-    t.buysM5 + t.buysH1 >= t.sellsM5 + t.sellsH1 &&
+    ageMin > 3 &&
+    ageMin <= 45 &&
+    t.mcap >= 6_000 &&
+    t.mcap <= 40_000 &&
+    earlyLead &&
     t.liq >= 2_000 &&
     !rollingOver &&
     !chased &&
     !boostFarm &&
-    !thinRip;
+    !thinRip &&
+    !dumping;
 
   const runner =
     ageMin <= 60 * 24 &&
@@ -113,6 +126,7 @@ export function scoreToken(t: MarketToken, now = Date.now()): Scored {
     m5Buys &&
     t.liq >= 6_000 &&
     liqRatio >= 0.035 &&
+    traded &&
     !rollingOver &&
     !chased;
 
@@ -129,6 +143,7 @@ export function scoreToken(t: MarketToken, now = Date.now()): Scored {
     m5Buys &&
     t.liq >= 8_000 &&
     liqRatio >= 0.035 &&
+    traded &&
     !rollingOver &&
     !chased;
 
@@ -164,7 +179,8 @@ export function scoreToken(t: MarketToken, now = Date.now()): Scored {
     !thinRip;
 
   let path: Proof | null = null;
-  if (fresh && !dumping && !sellHeavy && t.chgH1 > -8) path = "fresh";
+  if (ultra) path = "ultra";
+  else if (fresh && t.chgH1 > -8) path = "fresh";
   else if (health && runner) path = "runner";
   else if (health && graduated) path = "graduated";
   else if (reclaim && !thin) path = "reclaim";
@@ -200,16 +216,17 @@ export function scoreToken(t: MarketToken, now = Date.now()): Scored {
 
   const socials = (t.twitter ? 1 : 0) + (t.website ? 1 : 0) + (t.telegram ? 1 : 0);
   let tier: CallTier | null = null;
-  if (path === "fresh") tier = "risky";
+  if (path === "ultra") tier = "ultra";
+  else if (path === "fresh") tier = "risky";
   else if (
     path &&
-    liqRatio >= 0.06 &&
+    (path === "runner" || path === "graduated") &&
+    liqRatio >= 0.08 &&
     ageMin >= 20 &&
-    t.chgH1 <= 160 &&
+    t.chgH1 <= 80 &&
     t.chgH1 >= -5 &&
-    score >= 58 &&
-    (socials >= 1 || t.boosts >= 10) &&
-    buyRatio >= 1
+    buyRatio >= 1.1 &&
+    !boostFarm
   ) {
     tier = "conservative";
   } else if (path) tier = "balanced";
@@ -226,6 +243,7 @@ export function scoreToken(t: MarketToken, now = Date.now()): Scored {
   ];
 
   const reasons: string[] = [];
+  if (path === "ultra") reasons.push("Under 3 minutes, already being bought");
   if (path === "fresh") reasons.push("New launch, and the last minutes are already bidding");
   if (path === "runner") reasons.push("Still running, and the bid is alive");
   if (path === "graduated") reasons.push("Off the curve, still small, still being bought");
@@ -235,7 +253,7 @@ export function scoreToken(t: MarketToken, now = Date.now()): Scored {
   if (buyRatio >= 1.25) reasons.push("More buys than sells this hour");
   if (t.mcap >= 12_000 && t.mcap <= 80_000) reasons.push("Still small enough to have room");
   if (t.twitter) reasons.push("X account is linked on the pair");
-  if (path && socials === 0) reasons.push("No socials on the pair — higher risk");
+  if (path && socials === 0) reasons.push("No socials on the pair. Higher risk.");
 
   const blockers: string[] = [];
   if (!path) {
@@ -256,7 +274,7 @@ export function paperTrade(callMcap: number, peakMcap: number, nowMcap: number):
   const mult = nowMcap / callMcap;
   const peakX = Math.max(peakMcap, nowMcap) / callMcap;
   const cost = 0.975;
-  if (peakX < 2 && mult <= 0.6) return { x: mult * cost, status: "cut" };
+  if (peakX < 2 && mult <= 0.6) return { x: 0.6 * cost, status: "cut" };
   if (peakX >= 2) {
     const trail = peakX * 0.65;
     const exited = mult <= trail;
