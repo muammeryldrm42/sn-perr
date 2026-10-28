@@ -44,23 +44,23 @@ export function TokenChart({
       const { CandlestickSeries, ColorType, createChart, createSeriesMarkers } = await import("lightweight-charts");
       if (dead || !host.current) return;
 
-      const asMcap = priceUsd > 0 && mcap > 0;
-      const scale = asMcap ? mcap / priceUsd : 1;
-      const closes = rows.map((candle) => candle.c).filter((price) => price > 0).sort((a, b) => a - b);
-      const mid = closes[Math.floor(closes.length / 2)] || 1;
-      const cap = mid * 40;
+      const lastClose = rows[rows.length - 1]?.c ?? 0;
+      const scale = lastClose > 0 && mcap > 0 ? mcap / lastClose : priceUsd > 0 && mcap > 0 ? mcap / priceUsd : 1;
       const seen = new Set<number>();
       const bars: { time: number; open: number; high: number; low: number; close: number }[] = [];
       for (const candle of rows) {
         const time = Math.floor(candle.t / 1000);
         if (seen.has(time)) continue;
         seen.add(time);
+        const body = Math.max(candle.o, candle.c);
+        const high = Math.min(candle.h, body * 2.2);
+        const low = Math.max(candle.l, body / 2.2);
         bars.push({
           time,
-          open: Math.min(candle.o, cap) * scale,
-          high: Math.min(Math.max(candle.h, candle.o, candle.c), cap) * scale,
-          low: candle.l * scale,
-          close: Math.min(candle.c, cap) * scale,
+          open: candle.o * scale,
+          high: Math.max(high, body) * scale,
+          low: Math.min(low, body) * scale,
+          close: candle.c * scale,
         });
       }
       bars.sort((a, b) => a.time - b.time);
@@ -142,7 +142,7 @@ export function TokenChart({
             position: "belowBar",
             color: "#e0b738",
             shape: "arrowUp",
-            text: `Called ${fmtUsd(callMcap)}`,
+            text: "Call",
           },
         ]);
       }

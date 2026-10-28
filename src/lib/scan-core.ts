@@ -396,9 +396,24 @@ export async function buildCandles(mint: string, aggregate = 1): Promise<Candle[
   return rows;
 }
 
+function deepestPool(payload: unknown): string | null {
+  let best = "";
+  let bestUsd = -1;
+  for (const row of asArray((payload as { data?: unknown } | null)?.data)) {
+    const attr = (row as { attributes?: { address?: string; reserve_in_usd?: string } }).attributes;
+    if (!attr?.address) continue;
+    const usd = num(attr.reserve_in_usd);
+    if (usd >= bestUsd) {
+      bestUsd = usd;
+      best = attr.address;
+    }
+  }
+  return best || null;
+}
+
 async function candlesFresh(mint: string, aggregate: number): Promise<Candle[]> {
   const pools = await getJson(`https://api.geckoterminal.com/api/v2/networks/solana/tokens/${mint}/pools?page=1`);
-  const pool = (asArray((pools as { data?: unknown } | null)?.data)[0] as { attributes?: { address?: string } } | undefined)?.attributes?.address;
+  const pool = deepestPool(pools);
   if (!pool) return [];
   const ohlcv = await getJson(
     `https://api.geckoterminal.com/api/v2/networks/solana/pools/${pool}/ohlcv/minute?aggregate=${aggregate}&limit=120&currency=usd`,
